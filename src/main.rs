@@ -24,11 +24,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::Build(args) => {
-            build(args);
+            build(args)
         }
         Commands::Install => {
             install::install_binary().map_err(|e| anyhow::anyhow!(e))?;
+            Ok(())
         }
     }
-    Ok(())
 }
