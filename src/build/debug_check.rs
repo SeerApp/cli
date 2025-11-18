@@ -1,11 +1,10 @@
-use crate::build::FailedDebugInfo;
 use anyhow::Result;
 use object::Object;
 use std::fs;
 use std::path::Path;
 
 /// Convert failed debug checks to error messages for summary output
-pub fn collect_failed_debug_infos(failed_debugs_raw: &[(String, std::path::PathBuf)]) -> Vec<FailedDebugInfo> {
+pub fn collect_failed_debug_infos(failed_debugs_raw: &[(String, std::path::PathBuf)]) -> Vec<super::build::FailedDebugInfo> {
     let mut failed_debugs = Vec::new();
     for (name, path) in failed_debugs_raw {
         let error_msg = if !path.exists() {
@@ -14,7 +13,7 @@ pub fn collect_failed_debug_infos(failed_debugs_raw: &[(String, std::path::PathB
             // This is a fallback, ideally debug_check should return error string
             format!("debug check failed: {}", path.display())
         };
-        failed_debugs.push(FailedDebugInfo { name: name.clone(), path: path.clone(), error: error_msg });
+        failed_debugs.push(super::build::FailedDebugInfo { name: name.clone(), path: path.clone(), error: error_msg });
     }
     failed_debugs
 }
@@ -31,7 +30,7 @@ pub fn check_debug_file(debug_path: &Path) -> Result<bool> {
 }
 
 pub fn check_all_debug_files(
-    programs: &[crate::project::SolanaProgram],
+    programs: &[super::project::SolanaProgram],
     silent: bool,
 ) -> (Vec<std::path::PathBuf>, Vec<(String, std::path::PathBuf)>) {
     let mut valid_debug_files = Vec::new();
