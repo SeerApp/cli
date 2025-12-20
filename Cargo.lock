@@ -1921,7 +1921,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "seer-cli"
+name = "seer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
