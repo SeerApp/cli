@@ -122,7 +122,7 @@ add_path_if_needed() {
 
 main() {
     set -e
-    # Проверка зависимостей
+    # Test deps
     for cmd in curl tar mktemp chmod mv grep uname; do
         need_cmd "$cmd"
     done
