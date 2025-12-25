@@ -49,7 +49,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 🔒 FIXED Rust version (как у surfpool)
       - name: Install Rust toolchain
         run: rustup toolchain install 1.86.0 --profile minimal --target ${{ matrix.target }}
 
@@ -115,8 +114,8 @@ jobs:
         shell: bash
         run: |
           echo "SHORT_TARGET_NAME=${{ matrix.platform }}-${{ matrix.architecture }}" >> $GITHUB_ENV
-
-      # 🔧 BUILD (feature parity point)
+          
+      # Build
       - name: Build - Cargo (Windows)
         if: matrix.os == 'windows-latest'
         run: cargo build --release --locked --target ${{ matrix.target }}
