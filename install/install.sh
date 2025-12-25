@@ -61,7 +61,7 @@ install_cli() {
     ARCH="$2"
     TAG=$(get_latest_release)
     echo "Detected OS: $OS, ARCH: $ARCH, Latest version: $TAG"
-    FILENAME="seer-$TAG-$OS-$ARCH.tar.gz"
+    FILENAME="seer-$OS-$ARCH.tar.gz"
     URL="https://github.com/SeerApp/cli-install/releases/download/$TAG/$FILENAME"
     TMPDIR=$(mktemp -d)
     echo "Downloading $URL ..."
