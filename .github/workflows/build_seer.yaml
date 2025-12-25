@@ -1,0 +1,146 @@
+name: Build seer Binaries
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  dist_seer:
+    name: Build seer Distributions
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            target: x86_64-unknown-linux-gnu
+            architecture: x64
+
+          - os: ubuntu-22.04
+            platform: linux
+            target: aarch64-unknown-linux-gnu
+            architecture: arm64
+
+          - os: macos-latest
+            platform: darwin
+            target: x86_64-apple-darwin
+            architecture: x64
+
+          - os: macos-latest
+            platform: darwin
+            target: aarch64-apple-darwin
+            architecture: arm64
+
+          - os: windows-latest
+            platform: windows
+            target: x86_64-pc-windows-msvc
+            architecture: x64
+
+    steps:
+      # Windows LF fix
+      - name: Configure git to use LF (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 🔒 FIXED Rust version (как у surfpool)
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.86.0 --profile minimal --target ${{ matrix.target }}
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      # Rust hash (unix)
+      - name: Get Rust version (unix)
+        if: matrix.os != 'windows-latest'
+        run: echo "RUST_VERSION_HASH=$(rustc --version | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
+
+      # Rust hash (windows)
+      - name: Get Rust version (windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: echo "RUST_VERSION_HASH=$(rustc --version | sha256sum | awk '{print $1}')" >> $GITHUB_ENV
+
+      - name: Cache cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/
+            ./target/${{ matrix.target }}/release/
+          key: ${{ runner.os }}-rust-${{ env.RUST_VERSION_HASH }}-cargo-${{ hashFiles('./Cargo.lock') }}
+
+      # macOS ARM cross-compile
+      - name: Configure macos-arm64 cross compile
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
+
+      # OpenSSL macOS
+      - name: Configure OpenSSL (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install openssl@1.1
+          echo "OPENSSL_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@1.1)/include" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@1.1)/lib" >> $GITHUB_ENV
+
+      # LLVM macOS
+      - name: Install LLVM (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install llvm
+          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+
+      # LLVM Linux
+      - name: Install LLVM/Clang (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-dev libclang-dev pkg-config
+          echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
+
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-22.04'
+        run: sudo apt-get install -y libudev-dev
+
+      - name: Configure artifact names
+        shell: bash
+        run: |
+          echo "SHORT_TARGET_NAME=${{ matrix.platform }}-${{ matrix.architecture }}" >> $GITHUB_ENV
+
+      # 🔧 BUILD (feature parity point)
+      - name: Build - Cargo (Windows)
+        if: matrix.os == 'windows-latest'
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build - Cargo (macOS)
+        if: matrix.os == 'macos-latest'
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build - Cargo (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # Archive
+      - name: Compress artifact (not windows)
+        if: matrix.os != 'windows-latest'
+        run: tar -C target/${{ matrix.target }}/release -zcvf seer-${{ env.SHORT_TARGET_NAME }}.tar.gz seer
+
+      - name: Compress artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: tar -czf seer-${{ env.SHORT_TARGET_NAME }}.tar.gz -C target/${{ matrix.target }}/release seer.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seer-${{ env.SHORT_TARGET_NAME }}
+          path: seer-${{ env.SHORT_TARGET_NAME }}.tar.gz
