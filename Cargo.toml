@@ -17,6 +17,7 @@ object = "0.37.3"
 tokio = { version = "1.48.0", features = ["full"] }
 base64 = "0.22.1"
 solana-sdk = "3.0.0"
+openssl-sys = { version = "0.9", features = ["vendored"] }
 bincode = "1"
 serde = "1.0.228"
 tracing-subscriber ={ version = "0.3.20", features = ["fmt", "env-filter"] }
