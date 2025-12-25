@@ -13,26 +13,31 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Linux x64 (native)
           - os: ubuntu-22.04
             platform: linux
             target: x86_64-unknown-linux-gnu
             architecture: x64
 
+          # Linux arm64 (cross)
           - os: ubuntu-22.04
             platform: linux
             target: aarch64-unknown-linux-gnu
             architecture: arm64
 
+          # macOS x64
           - os: macos-latest
             platform: darwin
             target: x86_64-apple-darwin
             architecture: x64
 
+          # macOS arm64
           - os: macos-latest
             platform: darwin
             target: aarch64-apple-darwin
             architecture: arm64
 
+          # Windows x64
           - os: windows-latest
             platform: windows
             target: x86_64-pc-windows-msvc
@@ -49,23 +54,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Rust toolchai
       - name: Install Rust toolchain
         run: rustup toolchain install 1.86.0 --profile minimal --target ${{ matrix.target }}
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      # Rust hash (unix)
+      # Rust version hash (cache key)
       - name: Get Rust version (unix)
         if: matrix.os != 'windows-latest'
         run: echo "RUST_VERSION_HASH=$(rustc --version | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
 
-      # Rust hash (windows)
       - name: Get Rust version (windows)
         if: matrix.os == 'windows-latest'
         shell: bash
         run: echo "RUST_VERSION_HASH=$(rustc --version | sha256sum | awk '{print $1}')" >> $GITHUB_ENV
 
+      # Cargo cache
       - name: Cache cargo
         uses: actions/cache@v3
         with:
@@ -74,7 +80,7 @@ jobs:
             ./target/${{ matrix.target }}/release/
           key: ${{ runner.os }}-rust-${{ env.RUST_VERSION_HASH }}-cargo-${{ hashFiles('./Cargo.lock') }}
 
-      # macOS ARM cross-compile
+      # macOS ARM cross-compile vars
       - name: Configure macos-arm64 cross compile
         if: matrix.target == 'aarch64-apple-darwin'
         run: |
@@ -85,7 +91,7 @@ jobs:
       - name: Configure OpenSSL (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install openssl@1.1
+          brew install openssl@1.1 || true
           echo "OPENSSL_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
           echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@1.1)/include" >> $GITHUB_ENV
           echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@1.1)/lib" >> $GITHUB_ENV
@@ -94,41 +100,57 @@ jobs:
       - name: Install LLVM (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install llvm
+          brew install llvm || true
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
           echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
 
-      # LLVM Linux
-      - name: Install LLVM/Clang (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+      # Linux deps (x64 only, not arm64)
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-22.04' && matrix.target != 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm-dev libclang-dev pkg-config
-          echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
+          sudo apt-get install -y \
+            clang \
+            llvm-dev \
+            libclang-dev \
+            pkg-config \
+            libudev-dev
 
-      - name: Install Linux deps
-        if: matrix.os == 'ubuntu-22.04'
-        run: sudo apt-get install -y libudev-dev
+      # Install cross (linux arm64 only)
+      - name: Install cross
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: cargo install cross --locked
 
+      # Artifact name
       - name: Configure artifact names
         shell: bash
         run: |
           echo "SHORT_TARGET_NAME=${{ matrix.platform }}-${{ matrix.architecture }}" >> $GITHUB_ENV
-          
+
       # Build
-      - name: Build - Cargo (Windows)
-        if: matrix.os == 'windows-latest'
+
+      # Linux ARM64 — cross
+      - name: Build - cross (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: cross build --release --locked --target aarch64-unknown-linux-gnu
+
+      # Linux x64 — native cargo
+      - name: Build - Cargo (Linux x64)
+        if: matrix.os == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      # macOS
       - name: Build - Cargo (macOS)
         if: matrix.os == 'macos-latest'
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Build - Cargo (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+      # Windows
+      - name: Build - Cargo (Windows)
+        if: matrix.os == 'windows-latest'
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      # Archive
+      #Archive and upload artifacts
+
       - name: Compress artifact (not windows)
         if: matrix.os != 'windows-latest'
         run: tar -C target/${{ matrix.target }}/release -zcvf seer-${{ env.SHORT_TARGET_NAME }}.tar.gz seer
