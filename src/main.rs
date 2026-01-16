@@ -22,6 +22,9 @@ enum Commands {
     Build(BuildArgs),
     Run(RunArgs),
     Install,
+    Login {
+        api_key: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -31,6 +34,10 @@ fn main() -> Result<()> {
         Commands::Run(args) => run(args),
         Commands::Install => {
             install::install_binary().map_err(|e| anyhow::anyhow!(e))?;
+            Ok(())
+        },
+        Commands::Login { api_key } => {
+            run::auth::login_command(api_key)?;
             Ok(())
         }
     }
