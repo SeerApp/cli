@@ -9,10 +9,10 @@ mod project;
 #[derive(Parser, Debug)]
 pub struct BuildArgs {
     #[arg(long)]
-    cleanup_seer: bool,
+    pub cleanup_seer: bool,
     /// Run build with minimal output
     #[arg(long)]
-    silent: bool,
+    pub silent: bool,
 }
 
 pub fn build(args: BuildArgs) -> Result<()> {
@@ -46,7 +46,7 @@ pub fn build(args: BuildArgs) -> Result<()> {
             debug_flag::cleanup_seer_toml(&prog.manifest_path, args.silent)?;
         }
         if args.cleanup_seer {
-            println!("\nCleaning up *.seer files...");
+            println!("Cleaning up *.seer files...");
             build::cleanup_seer_files();
         }
 
