@@ -17,13 +17,19 @@ pub fn ask_for_consent(files: &Vec<&PathBuf>) -> bool {
     println!(
         "\nSeer stores uploaded files temporarily and deletes them automatically after 7 days."
     );
-    print!("Do you consent? (yes/no): ");
-
-    io::stdout().flush().unwrap();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
-    input.trim().eq_ignore_ascii_case("yes")
+    loop {
+        print!("Do you consent? (yes/no): ");
+        io::stdout().flush().unwrap();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        match input.trim().to_ascii_lowercase().as_str() {
+            "yes" | "y" => return true,
+            "no" | "n" => return false,
+            _ => {
+                println!("Incorrect input. Please enter 'yes', 'y', 'no', or 'n'.");
+            }
+        }
+    }
 }
 
 /// Formats size into human readable form (B, KB, MB, GB)
