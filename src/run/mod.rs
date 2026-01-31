@@ -1,6 +1,7 @@
 pub mod auth;
 mod consent;
 mod artifacts;
+mod artifacts_dir;
 mod blobs;
 mod source_paths;
 mod utils;
@@ -28,20 +29,16 @@ pub struct RunArgs {
     #[arg(long, default_value = "http://localhost:4770")]
     pub server_url: String,
     
-    /// Skip building the project before running
     #[arg(long, default_value_t = false)]
     pub skip_build: bool,
 
-    /// Skip consent prompt before uploading files
     #[arg(long, default_value_t = false)]
     pub consent: bool,
 
-    /// Run build in silent mode (no output)
     #[arg(long, default_value_t = true)]
     pub silent: bool,
 
-    /// Cleanup seer artifacts before build
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, hide = true)]
     pub cleanup_seer: bool,
 }
 
@@ -68,7 +65,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
 
     println!("");
     let (artifacts_dir, _artifacts_reason) = if args.artifacts == PathBuf::from("./target/deploy") {
-        match crate::run::artifacts::detect_artifacts_dir(&cwd) {
+        match crate::run::artifacts_dir::detect_artifacts_dir(&cwd) {
             Ok(path) => {
                 println!("Using autodetected artifacts directory: {} (default value was not overridden)", path.display());
                 (path, "autodetected (default value)".to_string())
@@ -88,6 +85,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     // Prepare proto Session and SessionArtifact
     let mut artifacts = Vec::new();
     let mut file_map = HashMap::new(); 
+    let mut files_to_send = Vec::new();
     for target in &targets {
         let rel = |p: &PathBuf| {
             let rel_path = p.strip_prefix(&cwd).unwrap_or(p).to_path_buf();
@@ -103,6 +101,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         let so_hash = make_blob(&target.so_path)?;
         let so_size = std::fs::metadata(&target.so_path)?.len();
         let so_rel = rel(&target.so_path);
+        files_to_send.push(so_rel.to_string_lossy().to_string());
         artifacts.push(SessionArtifact {
             file_path: so_rel.to_string_lossy().to_string(),
             file_hash: so_hash.clone(),
@@ -114,6 +113,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         let debug_hash = make_blob(&target.debug_path)?;
         let debug_size = std::fs::metadata(&target.debug_path)?.len();
         let debug_rel = rel(&target.debug_path);
+        files_to_send.push(debug_rel.to_string_lossy().to_string());
         artifacts.push(SessionArtifact {
             file_path: debug_rel.to_string_lossy().to_string(),
             file_hash: debug_hash.clone(),
@@ -126,6 +126,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         let keypair_hash = make_blob(&keypair_path)?;
         let keypair_size = std::fs::metadata(&keypair_path)?.len();
         let keypair_rel = rel(&keypair_path);
+        files_to_send.push(keypair_rel.to_string_lossy().to_string());
         artifacts.push(SessionArtifact {
             file_path: keypair_rel.to_string_lossy().to_string(),
             file_hash: keypair_hash.clone(),
@@ -141,6 +142,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                         let src_hash = make_blob(&path)?;
                         let src_size = std::fs::metadata(&path)?.len();
                         let src_rel = rel(path);
+                        files_to_send.push(src_rel.to_string_lossy().to_string());
                         artifacts.push(SessionArtifact {
                             file_path: src_rel.to_string_lossy().to_string(),
                             file_hash: src_hash.clone(),
@@ -156,6 +158,12 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                 eprintln!("Failed to extract source paths for {:?}: {:?}", target.debug_path, err);
             }
         }
+    }
+
+    // Print out which files are being sent to the server
+    println!("\n[seer] Files to be sent to the server during CreateSession:");
+    for file in &files_to_send {
+        println!("  - {}", file);
     }
 
     // gRPC: connect and set up client with auth

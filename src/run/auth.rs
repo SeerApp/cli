@@ -1,7 +1,7 @@
 use directories::ProjectDirs;
 use std::fs;
 use std::io::{self, Write};
-
+use rpassword::read_password;
 
 const API_KEY_FILENAME: &str = "api_key";
 
@@ -32,18 +32,9 @@ pub fn login_command(api_key: Option<String>) -> anyhow::Result<()> {
         None => {
             print!("Enter your Seer API key: ");
             io::stdout().flush()?;
-            #[cfg(windows)]
-            {
-                use rpassword::read_password;
-                let key = read_password()?;
-                store_api_key(&key)
-            }
-            #[cfg(not(windows))]
-            {
-                use rpassword::read_password;
-                let key = read_password()?;
-                store_api_key(&key)
-            }
+            let key = read_password()?;
+            store_api_key(&key)
         }
     }
 }
+

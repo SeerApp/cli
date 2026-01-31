@@ -8,9 +8,8 @@ mod project;
 
 #[derive(Parser, Debug)]
 pub struct BuildArgs {
-    #[arg(long)]
+    #[arg(long, hide = true)]
     pub cleanup_seer: bool,
-    /// Run build with minimal output
     #[arg(long)]
     pub silent: bool,
 }
@@ -50,7 +49,6 @@ pub fn build(args: BuildArgs) -> Result<()> {
             build::cleanup_seer_files();
         }
 
-        // Print build summary using build::print_build_summary
         build::print_build_summary(&build_results, &failed_debugs);
     }
 
