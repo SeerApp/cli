@@ -1,0 +1,11 @@
+{
+  "service": "SessionsService",
+  "method": "RunSession",
+  "input": { "matches": {} },
+  "output": {
+    "data": {
+      "solana_validator_url": "http://localhost:8899",
+      "expires_at": 9999999999
+    }
+  }
+}

@@ -160,12 +160,6 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         }
     }
 
-    // Print out which files are being sent to the server
-    println!("\n[seer] Files to be sent to the server during CreateSession:");
-    for file in &files_to_send {
-        println!("  - {}", file);
-    }
-
     // gRPC: connect and set up client with auth
     let channel = Channel::from_shared(args.server_url.clone())?.connect().await?;
     let token_val: MetadataValue<_> = format!("Bearer {}", token).parse()?;
