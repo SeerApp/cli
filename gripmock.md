@@ -2,6 +2,11 @@
 
 This guide describes how to set up and use local Gripmock testing for the Seer CLI.
 
+> **Before you start:**
+>
+> If you are new to Docker, Gripmock, or Buf, or encounter errors like `unauthorized` when pulling the mocker image, please see [preflight-setup.md](preflight-setup.md) for step-by-step configuration and troubleshooting.
+
+
 ### 1. Pull and Run the Mocker Container
 
 First, pull the mocker Docker image and run it as described in the mocker documentation:
