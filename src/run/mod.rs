@@ -162,11 +162,6 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         Ok(req)
     });
 
-    println!("\nArtifacts to be uploaded in CreateSessionRequest:");
-    for artifact in &artifacts {
-        println!("  - {} (hash: {}, size: {})", artifact.file_path, artifact.file_hash, artifact.file_size);
-    }
-
     let create_req = CreateSessionRequest {
         session: Some(Session {
             project_path: cwd.to_string_lossy().to_string(),
