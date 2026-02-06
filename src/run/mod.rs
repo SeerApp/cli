@@ -1,7 +1,6 @@
 pub mod auth;
 mod consent;
 mod artifacts;
-mod artifacts_dir;
 mod blobs;
 mod source_paths;
 mod utils;
@@ -26,7 +25,7 @@ pub struct RunArgs {
     #[arg(long, default_value = "./target/deploy")]
     pub artifacts: PathBuf,
 
-    #[arg(long, default_value = "http://localhost:4770")]
+    #[arg(long, default_value = "http://localhost:4770", hide = true)]
     pub server_url: String,
     
     #[arg(long, default_value_t = false)]
@@ -64,17 +63,22 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
 
     println!("");
-    let (artifacts_dir, _artifacts_reason) = if args.artifacts == PathBuf::from("./target/deploy") {
-        match crate::run::artifacts_dir::detect_artifacts_dir(&cwd) {
-            Ok(path) => {
-                println!("Using autodetected artifacts directory: {} (default value was not overridden)", path.display());
-                (path, "autodetected (default value)".to_string())
-            },
-            Err(e) => anyhow::bail!("Could not auto-detect artifacts directory: {}", e),
+    let artifacts_dir = if args.artifacts == PathBuf::from("./target/deploy") {
+        let deploy_dir = cwd.join("target/deploy");
+        if deploy_dir.exists() && deploy_dir.is_dir() {
+            println!("Using autodetected artifacts directory: {} (default value was not overridden)", deploy_dir.display());
+            deploy_dir
+        } else {
+            anyhow::bail!(
+                "Could not find build artifacts directory: {}\nExpected artifacts at: {}\nIf you use a custom build location, use the --target-dir flag.",
+                cwd.display(),
+                deploy_dir.display()
+            );
         }
     } else {
         println!("Using user-provided artifacts directory: {}", args.artifacts.display());
-        (args.artifacts.clone(), "provided by user".to_string())
+        println!("Note: Build artifacts (.so, .debug, -keypair.json) must be generated only through seer build to work correctly. If you provide a custom directory, ensure it contains valid seer build outputs.");
+        args.artifacts.clone()
     };
 
     let targets: Vec<ProgramTarget> = get_targets(artifacts_dir.clone())?;
@@ -98,41 +102,31 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         };
 
         // .so
-        let so_hash = make_blob(&target.so_path)?;
-        let so_size = std::fs::metadata(&target.so_path)?.len();
-        let so_rel = rel(&target.so_path);
-        files_to_send.push(so_rel.to_string_lossy().to_string());
-        artifacts.push(SessionArtifact {
-            file_path: so_rel.to_string_lossy().to_string(),
-            file_hash: so_hash.clone(),
-            file_size: so_size,
-        });
-        file_map.insert(so_hash.clone(), (so_rel.clone(), so_size));
+        crate::run::artifacts::process_artifact(
+            &target.so_path,
+            &rel,
+            &mut files_to_send,
+            &mut artifacts,
+            &mut file_map
+        )?;
 
         // .debug
-        let debug_hash = make_blob(&target.debug_path)?;
-        let debug_size = std::fs::metadata(&target.debug_path)?.len();
-        let debug_rel = rel(&target.debug_path);
-        files_to_send.push(debug_rel.to_string_lossy().to_string());
-        artifacts.push(SessionArtifact {
-            file_path: debug_rel.to_string_lossy().to_string(),
-            file_hash: debug_hash.clone(),
-            file_size: debug_size,
-        });
-        file_map.insert(debug_hash.clone(), (debug_rel.clone(), debug_size));
+        crate::run::artifacts::process_artifact(
+            &target.debug_path,
+            &rel,
+            &mut files_to_send,
+            &mut artifacts,
+            &mut file_map
+        )?;
 
         // -keypair.json
-        let keypair_path = args.artifacts.join(format!("{}-keypair.json", target.name));
-        let keypair_hash = make_blob(&keypair_path)?;
-        let keypair_size = std::fs::metadata(&keypair_path)?.len();
-        let keypair_rel = rel(&keypair_path);
-        files_to_send.push(keypair_rel.to_string_lossy().to_string());
-        artifacts.push(SessionArtifact {
-            file_path: keypair_rel.to_string_lossy().to_string(),
-            file_hash: keypair_hash.clone(),
-            file_size: keypair_size,
-        });
-        file_map.insert(keypair_hash.clone(), (keypair_rel.clone(), keypair_size));
+        crate::run::artifacts::process_artifact(
+            &target.json_path,
+            &rel,
+            &mut files_to_send,
+            &mut artifacts,
+            &mut file_map
+        )?;
 
         // .rs source files from debug
         match extract_source_paths(&target.debug_path, &cwd) {
@@ -167,6 +161,11 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         req.metadata_mut().insert("authorization", token_val.clone());
         Ok(req)
     });
+
+    println!("\nArtifacts to be uploaded in CreateSessionRequest:");
+    for artifact in &artifacts {
+        println!("  - {} (hash: {}, size: {})", artifact.file_path, artifact.file_hash, artifact.file_size);
+    }
 
     let create_req = CreateSessionRequest {
         session: Some(Session {

@@ -1,15 +1,19 @@
+use crate::run::SessionArtifact;
 use anyhow::{Context, Result};
 use solana_sdk::signature::read_keypair_file;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use crate::run::blobs::make_blob;
 
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ProgramTarget {
     pub name: String,
     pub so_path: PathBuf,
     pub debug_path: PathBuf,
+    pub json_path: PathBuf,
 }
 
 pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
@@ -87,9 +91,30 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
             name,
             so_path,
             debug_path,
+            json_path,
         });
     }
 
     Ok(programs)
+}
+
+pub fn process_artifact(
+    path: &PathBuf,
+    rel: &dyn Fn(&PathBuf) -> PathBuf,
+    files_to_send: &mut Vec<String>,
+    artifacts: &mut Vec<SessionArtifact>,
+    file_map: &mut HashMap<String, (PathBuf, u64)>
+) -> Result<()> {
+    let hash = make_blob(path)?;
+    let size = std::fs::metadata(path)?.len();
+    let rel_path = rel(path);
+    files_to_send.push(rel_path.to_string_lossy().to_string());
+    artifacts.push(SessionArtifact {
+        file_path: rel_path.to_string_lossy().to_string(),
+        file_hash: hash.clone(),
+        file_size: size,
+    });
+    file_map.insert(hash.clone(), (rel_path.clone(), size));
+    Ok(())
 }
 
