@@ -35,7 +35,7 @@ It means Docker cannot access the image because GHCR requires authentication.
 Open a terminal and run:
 
 ```
-docker login ghcr.io -u <your-github-username> --password-stdin
+docker login ghcr.io -u <your-github-username>
 ```
 
 Paste your PAT when prompted. 
@@ -72,8 +72,9 @@ To use generated protobuf code in your Rust project, you do not need to install 
 2. Login to Buf registry using your Buf API token:
 
   ```sh
-  cargo login --registry buf
+  cargo login --registry buf "Bearer {token}"
   ```
+  Replace `{token}` with your actual Buf API token. This avoids the interactive prompt and works reliably.
   - When prompted, use your Buf API token. To create a Buf API token:
     1. Go to https://buf.build and log in with your GitHub account.
     2. Click your profile icon (top right) and select "Settings".

@@ -8,9 +8,7 @@ use crate::run::blobs::make_blob;
 
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ProgramTarget {
-    pub name: String,
     pub so_path: PathBuf,
     pub debug_path: PathBuf,
     pub json_path: PathBuf,
@@ -88,7 +86,6 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
         }
 
         programs.push(ProgramTarget {
-            name,
             so_path,
             debug_path,
             json_path,

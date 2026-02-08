@@ -65,7 +65,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     println!("");
     let artifacts_dir = if args.artifacts == PathBuf::from("./target/deploy") {
         let deploy_dir = cwd.join("target/deploy");
-        if deploy_dir.exists() && deploy_dir.is_dir() {
+        if deploy_dir.is_dir() {
             println!("Using autodetected artifacts directory: {} (default value was not overridden)", deploy_dir.display());
             deploy_dir
         } else {
@@ -181,30 +181,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     }
 
     if missing_uploads.is_empty() {
-        println!("");
-        println!("All required files are already present on the server. No uploads needed.");
-        if !create_resp.upload_info.is_empty() {
-            let mut has_paths = false;
-            for upload_info in &create_resp.upload_info {
-                if !upload_info.file_path.is_empty() {
-                    has_paths = true;
-                    break;
-                }
-            }
-            if has_paths {
-                println!("Server requests upload for the following file_path values:");
-                for upload_info in &create_resp.upload_info {
-                    if !upload_info.file_path.is_empty() {
-                        println!("  - {}", upload_info.file_path);
-                    }
-                }
-                println!("");
-            }
-        }
-        println!("We have the following artifact file_path values:");
-        for artifact in &artifacts {
-            println!("  - {}", artifact.file_path);
-        }
+        println!("\nAll required files are already present on the server. No uploads needed.");
     } 
     else {
         let missing_paths: Vec<&PathBuf> = missing_uploads.iter().map(|(_, path)| *path).collect();
