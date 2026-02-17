@@ -20,12 +20,6 @@ jobs:
             target: x86_64-unknown-linux-gnu
             architecture: amd64
 
-          # Linux arm64 (cross)
-          - os: ubuntu-22.04
-            platform: linux
-            target: aarch64-unknown-linux-gnu
-            architecture: arm64
-
           # macOS x64
           - os: macos-latest
             platform: darwin
@@ -117,11 +111,6 @@ jobs:
             pkg-config \
             libudev-dev
 
-      # Install cross (linux arm64 only)
-      - name: Install cross
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: cargo install cross --locked
-
       # Artifact name
       - name: Configure artifact names
         shell: bash
@@ -129,11 +118,6 @@ jobs:
           echo "SHORT_TARGET_NAME=${{ matrix.platform }}-${{ matrix.architecture }}" >> $GITHUB_ENV
 
       # Build
-
-      # Linux ARM64 — cross
-      - name: Build - cross (Linux ARM64)
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: cross build --release --locked --target aarch64-unknown-linux-gnu
 
       # Linux x64 — native cargo
       - name: Build - Cargo (Linux x64)

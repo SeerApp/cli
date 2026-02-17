@@ -1,16 +1,17 @@
+use crate::run::SessionArtifact;
 use anyhow::{Context, Result};
 use solana_sdk::signature::read_keypair_file;
-use solana_sdk::signer::Signer;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use crate::run::blobs::make_blob;
+
 
 #[derive(Debug, Clone)]
 pub struct ProgramTarget {
-    pub name: String,
     pub so_path: PathBuf,
     pub debug_path: PathBuf,
-    pub pubkey: String,
+    pub json_path: PathBuf,
 }
 
 pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
@@ -51,32 +52,66 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
 
     let mut programs = Vec::<ProgramTarget>::new();
 
-    for (name, so_path) in so_files {
-        let debug_path = match debug_files.get(&name) {
-            Some(v) => v.clone(),
-            None => continue, // skip incomplete target
+    let mut all_names = std::collections::HashSet::new();
+    for name in so_files.keys() { all_names.insert(name.clone()); }
+    for name in debug_files.keys() { all_names.insert(name.clone()); }
+    for name in json_files.keys() { all_names.insert(name.clone()); }
+
+    for name in all_names {
+        let so_path = if let Some(v) = so_files.get(&name) {
+            v.clone()
+        } else {
+            println!("[seer][warn] Skipping program '{}' due to missing {}.so file.", name, name);
+            continue;
         };
 
-        let json_path = match json_files.get(&name) {
-            Some(v) => v.clone(),
-            None => continue,
+        let debug_path = if let Some(v) = debug_files.get(&name) {
+            v.clone()
+        } else {
+            println!("[seer][warn] Skipping program '{}' due to missing {}.debug file.", name, name);
+            continue;
         };
 
-        let keypair = read_keypair_file(json_path);
+        let json_path = if let Some(v) = json_files.get(&name) {
+            v.clone()
+        } else {
+            println!("[seer][warn] Skipping program '{}' due to missing {}-keypair.json file.", name, name);
+            continue;
+        };
 
+        let keypair = read_keypair_file(json_path.clone());
         if keypair.is_err() {
+            println!("[seer][warn] Skipping program '{}' due to invalid keypair file.", name);
             continue;
         }
 
-        let pubkey = keypair.unwrap().pubkey().to_string();
-
         programs.push(ProgramTarget {
-            name,
             so_path,
             debug_path,
-            pubkey: pubkey,
+            json_path,
         });
     }
 
     Ok(programs)
 }
+
+pub fn process_artifact(
+    path: &PathBuf,
+    rel: &dyn Fn(&PathBuf) -> PathBuf,
+    files_to_send: &mut Vec<String>,
+    artifacts: &mut Vec<SessionArtifact>,
+    file_map: &mut HashMap<String, (PathBuf, u64)>
+) -> Result<()> {
+    let hash = make_blob(path)?;
+    let size = std::fs::metadata(path)?.len();
+    let rel_path = rel(path);
+    files_to_send.push(rel_path.to_string_lossy().to_string());
+    artifacts.push(SessionArtifact {
+        file_path: rel_path.to_string_lossy().to_string(),
+        file_hash: hash.clone(),
+        file_size: size,
+    });
+    file_map.insert(hash.clone(), (rel_path.clone(), size));
+    Ok(())
+}
+

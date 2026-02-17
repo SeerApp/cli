@@ -13,10 +13,10 @@ pub fn install_binary() -> std::io::Result<()> {
     let target_dir = PathBuf::from("/usr/local/bin");
     fs::create_dir_all(&target_dir)?;
     #[cfg(target_os = "windows")]
-    let target_path = target_dir.join("seer-cli.exe");
+    let target_path = target_dir.join("seer.exe");
     #[cfg(not(target_os = "windows"))]
-    let target_path = target_dir.join("seer-cli");
+    let target_path = target_dir.join("seer");
     fs::copy(&exe, &target_path)?;
-    println!("seer-cli installed to {}", target_path.display());
+    println!("seer installed to {}", target_path.display());
     Ok(())
 }
