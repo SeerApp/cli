@@ -8,7 +8,7 @@ mod project;
 
 #[derive(Parser, Debug)]
 pub struct BuildArgs {
-    #[arg(long, hide = true)]
+    #[arg(long, default_value_t = true, hide = true, action = clap::ArgAction::Set)]
     pub cleanup_seer: bool,
     #[arg(long)]
     pub silent: bool,
@@ -26,7 +26,7 @@ pub fn build(args: BuildArgs) -> Result<()> {
 
         let mut seer_toml_paths = Vec::new();
         for prog in &programs {
-            let seer_toml_path = debug_flag::create_seer_toml(&prog.manifest_path, args.silent)?;
+            let seer_toml_path = debug_flag::create_seer_toml(&prog.manifest_path)?;
             seer_toml_paths.push((prog.name.clone(), seer_toml_path));
         }
 
@@ -40,7 +40,7 @@ pub fn build(args: BuildArgs) -> Result<()> {
         let failed_debugs = debug_check::collect_failed_debug_infos(&failed_debugs_raw);
 
         for prog in &programs {
-            debug_flag::cleanup_seer_toml(&prog.manifest_path, args.silent)?;
+            debug_flag::cleanup_seer_toml(&prog.manifest_path)?;
         }
         if args.cleanup_seer {
             build::cleanup_seer_files();
