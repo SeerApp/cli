@@ -10,6 +10,8 @@ mod project;
 pub struct BuildArgs {
     #[arg(long, default_value_t = true, hide = true, action = clap::ArgAction::Set)]
     pub cleanup_seer: bool,
+
+    /// Build programs silently. 
     #[arg(long)]
     pub silent: bool,
 }
