@@ -22,23 +22,31 @@ use crate::run::{auth::load_api_key, artifacts::ProgramTarget};
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
+    /// Customize path to the build artifacts directory.
     #[arg(long, default_value = "./target/deploy")]
     pub artifacts: PathBuf,
 
     #[arg(long, default_value = "http://localhost:4770", hide = true)]
     pub server_url: String,
-    
+
+    /// Skip building programs before uploading.
     #[arg(long, default_value_t = false)]
     pub skip_build: bool,
 
+    /// Automatically approve uploading and temporary storage of files by Seer.
     #[arg(long, default_value_t = false)]
     pub consent: bool,
 
+    /// Build programs silently.
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub silent: bool,
 
     #[arg(long, default_value_t = true, hide = true, action = clap::ArgAction::Set)]
     pub cleanup_seer: bool,
+
+    /// API key to use for this run (overrides environment variable and config file).
+    #[arg(long, value_name = "API_KEY", help = "API key to use for this run (overrides env/config)")]
+    pub api_key: Option<String>,
 }
 
 
@@ -54,7 +62,12 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     }
 
 
-    let token = load_api_key()?;
+    // Use --api-key if provided, else fallback to env/config
+    let token = if let Some(ref key) = args.api_key {
+        key.trim().to_string()
+    } else {
+        load_api_key()?
+    };
 
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
@@ -70,7 +83,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             deploy_dir
         } else {
             anyhow::bail!(
-                "Could not find build artifacts directory: {}\nExpected artifacts at: {}\nIf you use a custom build location, use the --target-dir flag.",
+                "Could not find build artifacts directory: {}\nExpected artifacts at: {}\nIf you use a custom build location, use the --artifacts flag.",
                 cwd.display(),
                 deploy_dir.display()
             );
