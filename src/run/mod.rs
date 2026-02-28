@@ -34,10 +34,10 @@ pub struct RunArgs {
     #[arg(long, default_value_t = false)]
     pub consent: bool,
 
-    #[arg(long, default_value_t = true)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub silent: bool,
 
-    #[arg(long, default_value_t = true, hide = true)]
+    #[arg(long, default_value_t = true, hide = true, action = clap::ArgAction::Set)]
     pub cleanup_seer: bool,
 }
 
@@ -195,8 +195,12 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         }
 
 
-        for (upload_info, path) in &missing_uploads {
-            upload_file(upload_info, path).await?;
+        let upload_futures = missing_uploads.iter().map(|(info, path)| {
+            upload_file(info, path)
+        });
+        let results = futures::future::join_all(upload_futures).await;
+        for result in results {
+            result?;
         }
     }
 
