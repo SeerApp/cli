@@ -52,7 +52,7 @@ detect_platform() {
 
 # Get latest release tag from GitHub
 get_latest_release() {
-    curl -fsSL "https://api.github.com/repos/SeerApp/cli-install/releases/latest" | grep '"tag_name"' | head -1 | sed -E 's/.*: "([^"]+)".*/\1/'
+    curl -fsSL "https://api.github.com/repos/SeerApp/cli/releases/latest" | grep '"tag_name"' | head -1 | sed -E 's/.*: "([^"]+)".*/\1/'
 }
 
 # Download and install binary
@@ -62,7 +62,7 @@ install_cli() {
     TAG=$(get_latest_release)
     echo "Detected OS: $OS, ARCH: $ARCH, Latest version: $TAG"
     FILENAME="seer-$OS-$ARCH.tar.gz"
-    URL="https://github.com/SeerApp/cli-install/releases/download/$TAG/$FILENAME"
+    URL="https://github.com/SeerApp/cli/releases/download/$TAG/$FILENAME"
     TMPDIR=$(mktemp -d)
     echo "Downloading $URL ..."
     if ! curl -fsSL "$URL" -o "$TMPDIR/$FILENAME"; then
