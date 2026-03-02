@@ -14,7 +14,7 @@ use clap::Parser;
 use std::{collections::HashMap, path::PathBuf};
 use tracing_subscriber::EnvFilter;
 use crate::run::consent::ask_for_consent;
-use crate::run::artifacts::get_targets;
+use crate::run::artifacts::{get_targets, create_pubkey_file, get_operator_pubkey};
 use crate::run::blobs::make_blob;
 use crate::run::source_paths::extract_source_paths;
 use crate::run::upload::upload_file;
@@ -99,10 +99,13 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         anyhow::bail!("No valid program targets found in {:?}. Ensure .so, .debug, and -keypair.json files exist and are valid.", artifacts_dir);
     }
 
+    let operator_pubkey = get_operator_pubkey()?;
+
     // Prepare proto Session and SessionArtifact
     let mut artifacts = Vec::new();
     let mut file_map = HashMap::new(); 
     let mut files_to_send = Vec::new();
+    let mut temp_pubkey_files: Vec<PathBuf> = Vec::new();
     for target in &targets {
         let rel = |p: &PathBuf| {
             let rel_path = p.strip_prefix(&cwd).unwrap_or(p).to_path_buf();
@@ -132,9 +135,11 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             &mut file_map
         )?;
 
-        // -keypair.json
+        // Convert -keypair.json to -pubkey.json (pubkey string only, no secret key)
+        let pubkey_path = create_pubkey_file(&target.json_path)?;
+        temp_pubkey_files.push(pubkey_path.clone());
         crate::run::artifacts::process_artifact(
-            &target.json_path,
+            &pubkey_path,
             &rel,
             &mut files_to_send,
             &mut artifacts,
@@ -179,8 +184,9 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         session: Some(Session {
             project_path: cwd.to_string_lossy().to_string(),
             artifacts: artifacts.clone(),
+            operator_pubkey: operator_pubkey.clone(),
         }),
-    };
+    };    
     let create_resp = client.create_session(Request::new(create_req)).await?.into_inner();
 
     let mut missing_uploads = Vec::new();
@@ -215,6 +221,10 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         for result in results {
             result?;
         }
+    }
+
+    for path in &temp_pubkey_files {
+        let _ = std::fs::remove_file(path);
     }
 
     println!("");

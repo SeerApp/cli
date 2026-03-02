@@ -1,6 +1,7 @@
 use crate::run::SessionArtifact;
 use anyhow::{Context, Result};
 use solana_sdk::signature::read_keypair_file;
+use solana_sdk::signer::Signer;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -115,3 +116,52 @@ pub fn process_artifact(
     Ok(())
 }
 
+/// Creates a temporary `-pubkey.json` file from a `-keypair.json` file.
+/// The pubkey file contains the base58-encoded public key as a plain string.
+/// Returns the path to the created pubkey file.
+pub fn create_pubkey_file(keypair_path: &PathBuf) -> Result<PathBuf> {
+    let keypair = read_keypair_file(keypair_path)
+        .map_err(|e| anyhow::anyhow!("Failed to read keypair file {:?}: {}", keypair_path, e))?;
+    let pubkey_str = keypair.pubkey().to_string();
+
+    let file_name = keypair_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("Invalid keypair filename"))?;
+
+    let program_name = file_name
+        .strip_suffix("-keypair")
+        .ok_or_else(|| anyhow::anyhow!("Keypair file doesn't end with -keypair: {}", file_name))?;
+
+    let pubkey_path = keypair_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Keypair path has no parent directory"))?
+        .join(format!("{}-pubkey.json", program_name));
+
+    fs::write(&pubkey_path, &pubkey_str)?;
+
+    Ok(pubkey_path)
+}
+
+/// Reads the operator pubkey from `~/.config/solana/id.json`.
+pub fn get_operator_pubkey() -> Result<String> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let id_path = home.join(".config").join("solana").join("id.json");
+
+    if !id_path.exists() {
+        anyhow::bail!(
+            "Solana identity keypair not found at {}. Run 'solana-keygen new' to create one.",
+            id_path.display()
+        );
+    }
+
+    let keypair = read_keypair_file(&id_path)
+        .map_err(|e| anyhow::anyhow!(
+            "Failed to read Solana identity keypair at {}: {}",
+            id_path.display(),
+            e
+        ))?;
+
+    Ok(keypair.pubkey().to_string())
+}

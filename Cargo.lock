@@ -557,7 +557,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -669,7 +669,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1493,7 +1493,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1850,7 +1850,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2082,7 +2082,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2247,9 +2247,9 @@ dependencies = [
 
 [[package]]
 name = "seer_protos_community_neoeinstein-prost"
-version = "0.5.0-20260106122759-57b994830629.2"
+version = "0.5.0-20260302203516-285b1dfed434.2"
 source = "sparse+https://buf.build/gen/cargo/"
-checksum = "9b6c6dd52f2f34118f5d98ed6070c6cfd5130c5a1e99f3740331fb00eea1b49e"
+checksum = "617f80f80ea269b3d87c2b862d147668ce8fe96024e4bd28ea222374cee62f37"
 dependencies = [
  "prost",
  "prost-types",
@@ -3444,7 +3444,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
