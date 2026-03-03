@@ -49,11 +49,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure Git to use GITHUB_TOKEN for private repos
+      - name: Configure Git credentials and Cargo
         shell: bash
         run: |
+          # Configure Git URL rewriting first
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "ssh://git@github.com/"
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "git@github.com:"
+          
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << EOF
+          [net]
+          git-fetch-with-cli = true
+          EOF
 
       - name: Configure Buf registry token
         shell: bash
