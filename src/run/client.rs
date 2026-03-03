@@ -8,7 +8,6 @@ use seer_protos_community_neoeinstein_tonic::seer::sessions::v1::tonic::sessions
 use seer_protos_community_neoeinstein_prost::seer::sessions::v1::*;
 
 /// Adds `Authorization: Bearer <token>` to every outgoing request.
-/// clerk-gate validates this and injects `x-user-id` before forwarding to the service.
 #[derive(Clone)]
 pub struct BearerInterceptor {
     pub token: tonic::metadata::MetadataValue<tonic::metadata::Ascii>,
@@ -22,14 +21,11 @@ impl tonic::service::Interceptor for BearerInterceptor {
     }
 }
 
-/// Thin wrapper around the generated gRPC client that handles auth and TLS setup.
 pub struct SessionsClient {
     inner: SessionsServiceClient<InterceptedService<Channel, BearerInterceptor>>,
 }
 
 impl SessionsClient {
-    /// Connect to the sessions gRPC service.
-    /// Automatically enables TLS (with system CA roots) for `https://` endpoints.
     pub async fn connect(endpoint_url: &str, token: &str) -> anyhow::Result<Self> {
         rustls::crypto::aws_lc_rs::default_provider()
             .install_default()
@@ -38,7 +34,6 @@ impl SessionsClient {
         let mut endpoint = Channel::from_shared(endpoint_url.to_string())
             .context("Invalid gRPC endpoint")?;
 
-        // Enable TLS with system CA roots for https endpoints (e.g. prod)
         if endpoint_url.starts_with("https://") {
             endpoint = endpoint
                 .tls_config(ClientTlsConfig::new().with_native_roots())
