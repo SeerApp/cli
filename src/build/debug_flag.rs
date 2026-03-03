@@ -11,7 +11,7 @@ pub fn seer_toml_path(cargo_toml_path: &Path) -> PathBuf {
 
 /// Creates seer.toml with [profile.release] debug = true
 /// Always overwrites seer.toml
-pub fn create_seer_toml(cargo_toml_path: &Path, silent: bool) -> Result<PathBuf> {
+pub fn create_seer_toml(cargo_toml_path: &Path) -> Result<PathBuf> {
     let seer_path = seer_toml_path(cargo_toml_path);
     let mut doc = Document::new();
     doc["profile"] = toml_edit::table();
@@ -21,22 +21,16 @@ pub fn create_seer_toml(cargo_toml_path: &Path, silent: bool) -> Result<PathBuf>
     release_table["debug"] = value(true);
     fs::write(&seer_path, doc.to_string())
         .with_context(|| format!("Failed to write {}", seer_path.display()))?;
-    if !silent {
-        println!("[debug_flag] Created {} with [profile.release] debug = true", seer_path.display());
-    }
     Ok(seer_path)
 }
 
 
 /// Removes seer.toml file
-pub fn cleanup_seer_toml(cargo_toml_path: &Path, silent: bool) -> Result<()> {
+pub fn cleanup_seer_toml(cargo_toml_path: &Path) -> Result<()> {
     let seer_path = seer_toml_path(cargo_toml_path);
     if seer_path.exists() {
         fs::remove_file(&seer_path)
             .with_context(|| format!("Failed to remove {}", seer_path.display()))?;
-        if !silent {
-            println!("[debug_flag] Removed {}", seer_path.display());
-        }
     }
     Ok(())
 }

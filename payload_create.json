@@ -1,0 +1,43 @@
+{
+  "service": "SessionsService",
+  "method": "CreateSession",
+  "input": { "matches": {} },
+  "output": {
+    "data": {
+      "upload_info": [
+        {
+          "file_path": "./target/deploy/puppet.so",
+          "post": {
+            "url": "http://localhost:9000/fake-upload",
+            "fields": { "key": "value" }
+          },
+          "expires_at": 9999999999
+        },
+        {
+          "file_path": "./target/deploy/puppet.debug",
+          "post": {
+            "url": "http://localhost:9000/fake-upload",
+            "fields": { "key": "value" }
+          },
+          "expires_at": 9999999999
+        },
+        {
+          "file_path": "./target/deploy/puppet_master.so",
+          "post": {
+            "url": "http://localhost:9000/fake-upload",
+            "fields": { "key": "value" }
+          },
+          "expires_at": 9999999999
+        },
+        {
+          "file_path": "./programs/puppet/src/lib.rs",
+          "post": {
+            "url": "http://localhost:9000/fake-upload",
+            "fields": { "key": "value" }
+          },
+          "expires_at": 9999999999
+        }
+      ]
+    }
+  }
+}
