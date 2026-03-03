@@ -124,7 +124,7 @@ pub fn create_pubkey_file(keypair_path: &PathBuf) -> Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("Keypair path has no parent directory"))?
         .join(format!("{}-pubkey.json", program_name));
 
-    fs::write(&pubkey_path, &pubkey_str)?;
+    fs::write(&pubkey_path, format!("\"{}\"", &pubkey_str))?;
 
     Ok(pubkey_path)
 }
