@@ -55,7 +55,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Rust toolchai
+      # Setup SSH for private dependencies
+      - name: Setup SSH for private dependencies
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # Rust toolchain
       - name: Install Rust toolchain
         run: rustup toolchain install 1.86.0 --profile minimal --target ${{ matrix.target }}
 
