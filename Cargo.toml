@@ -29,10 +29,12 @@ tracing = "0.1.41"
 path-clean = "1.0.1"
 memmap2 = "0.9.9"
 gimli = "0.32.3"
-tonic = "0.14"
+tonic = { version = "0.14", features = ["channel", "tls-aws-lc", "tls-native-roots"] }
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
 sha2 = "0.10.9"
 seer_protos_community_neoeinstein-tonic = { version = "0.5.0-20260106122759-57b994830629.4", registry = "buf" }
-seer_protos_community_neoeinstein-prost = { version = "0.5.0-20260106122759-57b994830629.2", registry = "buf" }
+seer_protos_community_neoeinstein-prost = { version = "0.5.0-20260302203516-285b1dfed434.2", registry = "buf" }
 s3-presign = { git = "ssh://git@github.com/SeerApp/s3-presign", tag = "v0.1.0" }
+futures = "0.3"
 
 

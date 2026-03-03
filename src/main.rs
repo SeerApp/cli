@@ -19,9 +19,16 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Build programs for Seer
     Build(BuildArgs),
+
+    /// Trace a transaction  
     Run(RunArgs),
+
+    /// Install the Seer binary globally 
     Install,
+
+    /// Log in with your Seer API key 
     Login {
         api_key: Option<String>,
     },

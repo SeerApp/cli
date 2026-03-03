@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod client;
 mod consent;
 mod artifacts;
 mod blobs;
@@ -8,13 +9,12 @@ mod upload;
 
 
 use seer_protos_community_neoeinstein_prost::seer::sessions::v1::*;
-use seer_protos_community_neoeinstein_tonic::seer::sessions::v1::tonic::sessions_service_client::SessionsServiceClient;
-use tonic::{Request, transport::Channel, metadata::MetadataValue};
+use tonic::Request;
 use clap::Parser;
 use std::{collections::HashMap, path::PathBuf};
-use tracing_subscriber::EnvFilter;
+use crate::run::client::SessionsClient;
 use crate::run::consent::ask_for_consent;
-use crate::run::artifacts::get_targets;
+use crate::run::artifacts::{get_targets, create_pubkey_file, get_operator_pubkey};
 use crate::run::blobs::make_blob;
 use crate::run::source_paths::extract_source_paths;
 use crate::run::upload::upload_file;
@@ -22,23 +22,31 @@ use crate::run::{auth::load_api_key, artifacts::ProgramTarget};
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
+    /// Customize path to the build artifacts directory.
     #[arg(long, default_value = "./target/deploy")]
     pub artifacts: PathBuf,
 
-    #[arg(long, default_value = "http://localhost:4770", hide = true)]
+    #[arg(long, default_value = "https://sessions.seer.run", hide = true)]
     pub server_url: String,
-    
+
+    /// Skip building programs before uploading.
     #[arg(long, default_value_t = false)]
     pub skip_build: bool,
 
+    /// Automatically approve uploading and temporary storage of files by Seer.
     #[arg(long, default_value_t = false)]
     pub consent: bool,
 
-    #[arg(long, default_value_t = true)]
+    /// Build programs silently.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub silent: bool,
 
-    #[arg(long, default_value_t = true, hide = true)]
+    #[arg(long, default_value_t = true, hide = true, action = clap::ArgAction::Set)]
     pub cleanup_seer: bool,
+
+    /// API key to use for this run (overrides environment variable and config file).
+    #[arg(long, value_name = "API_KEY", help = "API key to use for this run (overrides env/config)")]
+    pub api_key: Option<String>,
 }
 
 
@@ -53,12 +61,13 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         crate::build::build(build_args)?;
     }
 
+    // ── Step 2: API key ──────────────────────────────────────────────────────
+    let token = if let Some(ref key) = args.api_key {
+        key.trim().to_string()
+    } else {
+        load_api_key()?
+    };
 
-    let token = load_api_key()?;
-
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
 
     let cwd = std::env::current_dir()?;
 
@@ -70,26 +79,29 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             deploy_dir
         } else {
             anyhow::bail!(
-                "Could not find build artifacts directory: {}\nExpected artifacts at: {}\nIf you use a custom build location, use the --target-dir flag.",
+                "Could not find build artifacts directory: {}\nExpected artifacts at: {}\nIf you use a custom build location, use the --artifacts flag.",
                 cwd.display(),
                 deploy_dir.display()
             );
         }
     } else {
         println!("Using user-provided artifacts directory: {}", args.artifacts.display());
-        println!("Note: Build artifacts (.so, .debug, -keypair.json) must be generated only through seer build to work correctly. If you provide a custom directory, ensure it contains valid seer build outputs.");
+        println!("Note: Build artifacts (.debug, -keypair.json) must be generated only through seer build to work correctly. If you provide a custom directory, ensure it contains valid seer build outputs.");
         args.artifacts.clone()
     };
 
     let targets: Vec<ProgramTarget> = get_targets(artifacts_dir.clone())?;
     if targets.is_empty() {
-        anyhow::bail!("No valid program targets found in {:?}. Ensure .so, .debug, and -keypair.json files exist and are valid.", artifacts_dir);
+        anyhow::bail!("No valid program targets found in {:?}. Ensure .debug and -keypair.json files exist and are valid.", artifacts_dir);
     }
+
+    let operator_pubkey = get_operator_pubkey()?;
 
     // Prepare proto Session and SessionArtifact
     let mut artifacts = Vec::new();
     let mut file_map = HashMap::new(); 
     let mut files_to_send = Vec::new();
+    let mut temp_pubkey_files: Vec<PathBuf> = Vec::new();
     for target in &targets {
         let rel = |p: &PathBuf| {
             let rel_path = p.strip_prefix(&cwd).unwrap_or(p).to_path_buf();
@@ -101,15 +113,6 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             }
         };
 
-        // .so
-        crate::run::artifacts::process_artifact(
-            &target.so_path,
-            &rel,
-            &mut files_to_send,
-            &mut artifacts,
-            &mut file_map
-        )?;
-
         // .debug
         crate::run::artifacts::process_artifact(
             &target.debug_path,
@@ -119,9 +122,11 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             &mut file_map
         )?;
 
-        // -keypair.json
+        // Convert -keypair.json to -pubkey.json (pubkey string only, no secret key)
+        let pubkey_path = create_pubkey_file(&target.json_path)?;
+        temp_pubkey_files.push(pubkey_path.clone());
         crate::run::artifacts::process_artifact(
-            &target.json_path,
+            &pubkey_path,
             &rel,
             &mut files_to_send,
             &mut artifacts,
@@ -154,20 +159,16 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         }
     }
 
-    // gRPC: connect and set up client with auth
-    let channel = Channel::from_shared(args.server_url.clone())?.connect().await?;
-    let token_val: MetadataValue<_> = format!("Bearer {}", token).parse()?;
-    let mut client = SessionsServiceClient::with_interceptor(channel, move |mut req: Request<()>| {
-        req.metadata_mut().insert("authorization", token_val.clone());
-        Ok(req)
-    });
+    // gRPC: connect and set up client
+    let mut client = SessionsClient::connect(&args.server_url, &token).await?;
 
     let create_req = CreateSessionRequest {
         session: Some(Session {
             project_path: cwd.to_string_lossy().to_string(),
             artifacts: artifacts.clone(),
+            operator_pubkey: operator_pubkey.clone(),
         }),
-    };
+    };        
     let create_resp = client.create_session(Request::new(create_req)).await?.into_inner();
 
     let mut missing_uploads = Vec::new();
@@ -194,10 +195,17 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             return Ok(());
         }
 
-
-        for (upload_info, path) in &missing_uploads {
-            upload_file(upload_info, path).await?;
+        let upload_futures = missing_uploads.iter().map(|(info, path)| {
+            upload_file(info, path)
+        });
+        let results = futures::future::join_all(upload_futures).await;
+        for result in results {
+            result?;
         }
+    }
+
+    for path in &temp_pubkey_files {
+        let _ = std::fs::remove_file(path);
     }
 
     println!("");
