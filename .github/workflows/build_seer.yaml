@@ -49,11 +49,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Setup SSH for private dependencies
-      - name: Setup SSH for private dependencies
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Configure Git to use GITHUB_TOKEN for private repos
+        shell: bash
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "ssh://git@github.com/"
+          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "git@github.com:"
+
+      - name: Configure Buf registry token
+        shell: bash
+        run: echo "CARGO_REGISTRIES_BUF_TOKEN=${{ secrets.BUF_REGISTRY_TOKEN }}" >> $GITHUB_ENV
 
       # Rust toolchain
       - name: Install Rust toolchain
