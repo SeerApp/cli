@@ -30,9 +30,7 @@ pub fn build(args: BuildArgs) -> Result<()> {
         for prog in &programs {
             seer_toml_paths.push((
                 prog.name.clone(),
-                debug_flag::create_seer_toml(args.cleanup_seer, &prog.manifest_path)?
-                    .path()
-                    .clone(),
+                debug_flag::create_seer_toml(args.cleanup_seer, &prog.manifest_path)?,
             ));
         }
 

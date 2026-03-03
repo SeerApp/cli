@@ -5,6 +5,8 @@ use std::path::Path;
 use std::process::Stdio;
 use std::process::Command;
 
+use crate::temp_file::TempFile;
+
 #[allow(dead_code)]
 pub struct BuildResult {
     pub name: String,
@@ -28,7 +30,7 @@ pub enum BuildStatus {
 }
 
 /// Build all programs and collect results
-pub fn build_all_programs(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, PathBuf)]) -> Vec<BuildResult> {
+pub fn build_all_programs(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, TempFile)]) -> Vec<BuildResult> {
     let mut build_results = Vec::new();
     for (i, prog) in programs.iter().enumerate() {
         println!("Building {}...", prog.name);
@@ -57,7 +59,7 @@ pub fn build_all_programs(programs: &[super::project::SolanaProgram], seer_toml_
     build_results
 }
 
-pub fn build_program(manifest_path: &Path, seer_toml_path: &Path) -> Result<()> {
+pub fn build_program(manifest_path: &Path, seer_toml_path: &TempFile) -> Result<()> {
     let manifest_dir = manifest_path.parent().context("No parent directory for manifest")?;
     let mut child = Command::new("cargo-build-sbf")
         .arg("--manifest-path")
@@ -65,7 +67,7 @@ pub fn build_program(manifest_path: &Path, seer_toml_path: &Path) -> Result<()> 
         .arg("--debug")
         .arg("--")
         .arg("--config")
-        .arg(seer_toml_path)
+        .arg(seer_toml_path.path())
         .current_dir(manifest_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -80,7 +82,7 @@ pub fn build_program(manifest_path: &Path, seer_toml_path: &Path) -> Result<()> 
             .arg("--debug")
             .arg("--")
             .arg("--config")
-            .arg(seer_toml_path)
+            .arg(seer_toml_path.path())
             .current_dir(manifest_dir)
             .output()
             .context("Failed to rerun cargo-build-sbf for error output")?;
@@ -129,7 +131,7 @@ pub fn print_build_summary(
 }
 
 /// Build all programs silently, printing only minimal info
-pub fn build_all_programs_silent(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, PathBuf)]) -> Vec<BuildResult> {
+pub fn build_all_programs_silent(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, TempFile)]) -> Vec<BuildResult> {
     let mut build_results = Vec::new();
     for (i, prog) in programs.iter().enumerate() {
         println!("Building {}...", prog.name);
@@ -159,7 +161,7 @@ pub fn build_all_programs_silent(programs: &[super::project::SolanaProgram], see
 }
 
 /// Build a single program silently (no build output, just status)
-pub fn build_program_silent(manifest_path: &Path, seer_toml_path: &Path) -> Result<()> {
+pub fn build_program_silent(manifest_path: &Path, seer_toml_path: &TempFile) -> Result<()> {
     use std::process::Stdio;
     let manifest_dir = manifest_path.parent().context("No parent directory for manifest")?;
     let status = Command::new("cargo-build-sbf")
@@ -168,7 +170,7 @@ pub fn build_program_silent(manifest_path: &Path, seer_toml_path: &Path) -> Resu
         .arg("--debug")
         .arg("--")
         .arg("--config")
-        .arg(seer_toml_path)
+        .arg(seer_toml_path.path())
         .current_dir(manifest_dir)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -182,7 +184,7 @@ pub fn build_program_silent(manifest_path: &Path, seer_toml_path: &Path) -> Resu
             .arg("--debug")
             .arg("--")
             .arg("--config")
-            .arg(seer_toml_path)
+            .arg(seer_toml_path.path())
             .current_dir(manifest_dir)
             .output()
             .context("Failed to rerun cargo-build-sbf for error output")?;
