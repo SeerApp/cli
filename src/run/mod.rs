@@ -19,6 +19,7 @@ use crate::run::blobs::make_blob;
 use crate::run::source_paths::extract_source_paths;
 use crate::run::upload::upload_file;
 use crate::run::{auth::load_api_key, artifacts::ProgramTarget};
+use crate::temp_file::TempFile;
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
@@ -101,7 +102,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     let mut artifacts = Vec::new();
     let mut file_map = HashMap::new(); 
     let mut files_to_send = Vec::new();
-    let mut temp_pubkey_files: Vec<PathBuf> = Vec::new();
+    let mut temp_pubkey_files: Vec<TempFile> = Vec::new();
     for target in &targets {
         let rel = |p: &PathBuf| {
             let rel_path = p.strip_prefix(&cwd).unwrap_or(p).to_path_buf();
@@ -124,7 +125,6 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
 
         // Convert -keypair.json to -pubkey.json (pubkey string only, no secret key)
         let pubkey_path = create_pubkey_file(args.cleanup_seer, &target.json_path)?;
-        temp_pubkey_files.push(pubkey_path.path().clone());
         crate::run::artifacts::process_artifact(
             pubkey_path.path(),
             &rel,
@@ -132,6 +132,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             &mut artifacts,
             &mut file_map
         )?;
+        temp_pubkey_files.push(pubkey_path);
 
         // .rs source files from debug
         match extract_source_paths(&target.debug_path, &cwd) {
@@ -206,7 +207,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     }
 
     for path in &temp_pubkey_files {
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(path.path());
     }
 
     println!("");
