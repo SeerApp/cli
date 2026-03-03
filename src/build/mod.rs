@@ -1,5 +1,5 @@
-use clap::Parser;
 use anyhow::Result;
+use clap::Parser;
 
 mod build;
 mod debug_check;
@@ -11,7 +11,7 @@ pub struct BuildArgs {
     #[arg(long, default_value_t = true, hide = true, action = clap::ArgAction::Set)]
     pub cleanup_seer: bool,
 
-    /// Build programs silently. 
+    /// Build programs silently.
     #[arg(long)]
     pub silent: bool,
 }
@@ -28,8 +28,12 @@ pub fn build(args: BuildArgs) -> Result<()> {
 
         let mut seer_toml_paths = Vec::new();
         for prog in &programs {
-            let seer_toml_path = debug_flag::create_seer_toml(&prog.manifest_path)?;
-            seer_toml_paths.push((prog.name.clone(), seer_toml_path));
+            seer_toml_paths.push((
+                prog.name.clone(),
+                debug_flag::create_seer_toml(args.cleanup_seer, &prog.manifest_path)?
+                    .path()
+                    .clone(),
+            ));
         }
 
         println!("\nBuilding programs...");
@@ -40,13 +44,6 @@ pub fn build(args: BuildArgs) -> Result<()> {
         };
         let (_, failed_debugs_raw) = debug_check::check_all_debug_files(&programs, args.silent);
         let failed_debugs = debug_check::collect_failed_debug_infos(&failed_debugs_raw);
-
-        for prog in &programs {
-            debug_flag::cleanup_seer_toml(&prog.manifest_path)?;
-        }
-        if args.cleanup_seer {
-            build::cleanup_seer_files();
-        }
 
         build::print_build_summary(&build_results, &failed_debugs);
     }

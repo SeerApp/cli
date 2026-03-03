@@ -123,10 +123,10 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         )?;
 
         // Convert -keypair.json to -pubkey.json (pubkey string only, no secret key)
-        let pubkey_path = create_pubkey_file(&target.json_path)?;
-        temp_pubkey_files.push(pubkey_path.clone());
+        let pubkey_path = create_pubkey_file(args.cleanup_seer, &target.json_path)?;
+        temp_pubkey_files.push(pubkey_path.path().clone());
         crate::run::artifacts::process_artifact(
-            &pubkey_path,
+            pubkey_path.path(),
             &rel,
             &mut files_to_send,
             &mut artifacts,
@@ -168,7 +168,8 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             artifacts: artifacts.clone(),
             operator_pubkey: operator_pubkey.clone(),
         }),
-    };        
+    };
+
     let create_resp = client.create_session(Request::new(create_req)).await?.into_inner();
 
     let mut missing_uploads = Vec::new();

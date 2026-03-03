@@ -195,18 +195,3 @@ pub fn build_program_silent(manifest_path: &Path, seer_toml_path: &Path) -> Resu
     }
     Ok(())
 }
-
-pub fn cleanup_seer_files() {
-    let project_root = std::env::current_dir().unwrap();
-    let pattern = format!("{}/**/*.seer", project_root.display());
-    match glob::glob(&pattern) {
-        Ok(paths) => {
-            for entry in paths {
-                if let Ok(path) = entry {
-                    let _ = std::fs::remove_file(&path);
-                }
-            }
-        }
-        Err(_) => {}
-    }
-}

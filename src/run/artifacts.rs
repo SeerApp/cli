@@ -1,4 +1,5 @@
 use crate::run::SessionArtifact;
+use crate::temp_file::TempFile;
 use anyhow::{Context, Result};
 use solana_sdk::signature::read_keypair_file;
 use solana_sdk::signer::Signer;
@@ -105,7 +106,7 @@ pub fn process_artifact(
 /// Creates a temporary `-pubkey.json` file from a `-keypair.json` file.
 /// The pubkey file contains the base58-encoded public key as a plain string.
 /// Returns the path to the created pubkey file.
-pub fn create_pubkey_file(keypair_path: &PathBuf) -> Result<PathBuf> {
+pub fn create_pubkey_file(cleanup: bool, keypair_path: &PathBuf) -> Result<TempFile> {
     let keypair = read_keypair_file(keypair_path)
         .map_err(|e| anyhow::anyhow!("Failed to read keypair file {:?}: {}", keypair_path, e))?;
     let pubkey_str = keypair.pubkey().to_string();
@@ -126,7 +127,7 @@ pub fn create_pubkey_file(keypair_path: &PathBuf) -> Result<PathBuf> {
 
     fs::write(&pubkey_path, format!("\"{}\"", &pubkey_str))?;
 
-    Ok(pubkey_path)
+    Ok(TempFile::new(cleanup, pubkey_path))
 }
 
 /// Reads the operator pubkey from `~/.config/solana/id.json`.

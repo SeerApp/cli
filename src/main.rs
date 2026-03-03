@@ -1,6 +1,7 @@
 mod build;
 mod install;
 mod run;
+mod temp_file;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
