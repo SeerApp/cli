@@ -1,125 +1,163 @@
 # Seer CLI
 
-Seer CLI is a cross-platform command-line tool for building Solana native programs with DWARF debug information. It automates the process of compiling Solana programs so that the resulting ELF files contain the necessary debug data for advanced inspection and debugging.
+Seer CLI is a cross-platform command-line tool that lets you trace transactions running on your Solana programs — directly from the terminal.
+
+With Seer you can finally see inside your on-chain programs. Run a transaction, and get back a full execution trace — every instruction, every account touched, every state change — all annotated against your original source code. No more guessing from logs. No more blind debugging. Just a clear picture of exactly what your program did, line by line.
+
+## What It Does
+
+Every transaction your Solana program handles tells a story — Seer CLI lets you read it. Point the CLI at your project and it takes care of everything: building your programs, uploading the artifacts, and handing you back a link where the full execution of your transaction unfolds step by step. No log grepping, no manual ELF inspection — just a clear, source-level trace of exactly what happened, and why.
 
 ## Features
+
 - Detects all Solana native programs in your project (single-package or workspace)
-- Creates a `seer.toml` file for each program with `[profile.release] debug = true` before building
-- Builds each program using Solana's `cargo-build-sbf` with DWARF debug info
-- Restores original state of project after build
-- Works on Windows, Linux, and Mac
+- Builds each program and prepares it for tracing
+- Uploads artifacts to the Seer platform and returns a shareable trace URL
+- API key management via flag, environment variable, or stored config
+- Works on Linux, macOS and WSL.
 
 ## Installation
 
-1. Build from source (seer-main/seer):
-   ```sh
-   cargo build --release
-   ```
-   The binary will be located at `./target/release/seer` (or `seer.exe` on Windows).
+Download the latest binary directly:
 
-2. (Optionally) **After build** install globally using the CLI:
-   ```sh
-   ./target/release/seer install
-   ```
-   - On Linux/macOS/WSL, this copies the binary to `/usr/local/bin/seer` (may require `sudo`).
-   - On Windows, it copies to `%USERPROFILE%\.cargo\bin\seer.exe`.
+```
+<URL here>
+```
 
-    After installation, you can run `seer` from any directory.
+Or install with curl (Linux/macOS):
+
+```sh
+curl -sSfL <curl command here> | sh
+```
 
 
 ## Usage
 
-Navigate to the folder of your Solana project you want to debug and run:
+Navigate to the root of your Solana project and run the desired subcommand.
 
-### Build Only
-If you have installed the CLI globally, you can simply run:
+---
+
+### `seer build`
+
+Builds all Solana native programs in the current project, preparing them for tracing.
+
+```sh
+seer build [OPTIONS]
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--silent` | Suppress build output for a quieter experience | `false` |
+
+**Example:**
 ```sh
 seer build
-```
-This command will build all Solana native programs in your project with DWARF debug info, as described above.
-
-If you have not installed the CLI globally, use the path to the binary file. For example (from seer-main/demo on WSL):
-```sh
-/mnt/e/Projects/Rust/seer-main/seer/target/release/seer build
-```
-
-#### Options
-- `--silent`        Suppress output for a quieter build process
-
-Example:
-```sh
 seer build --silent
 ```
 
-### Build and Upload Artifacts for Debugging
+---
 
-The CLI now supports a new command:
+### `seer run`
+
+Builds programs (unless skipped), uploads the artifacts to Seer, and prints a URL to the resulting debug trace.
 
 ```sh
-seer run
+seer run [OPTIONS]
 ```
 
-This command will:
-1. Build all Solana native programs in your project with DWARF debug info (same as `seer build`).
-2. Send the resulting build artifacts to a remote server for analysis.
-3. The server processes the artifacts and returns a URL containing a debug trace or report.
-4. The CLI will print the URL to the console. You can open this URL in your browser to view the debug trace and related information.
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--artifacts <PATH>` | Path to the build artifacts directory | `./target/deploy` |
+| `--skip-build` | Skip building programs and upload existing artifacts | `false` |
+| `--consent` | Automatically approve the upload consent prompt | `false` |
+| `--silent` | Suppress build output | `true` |
+| `--api-key <API_KEY>` | API key for this run (overrides env variable and saved config) | — |
 
-#### Example:
+**API key resolution order:**
+1. `--api-key` flag
+2. `SEER_API_KEY` environment variable
+3. Key saved by `seer login`
+
+**Consent:** By default, Seer will prompt you to confirm before uploading your files. Pass `--consent` to skip the prompt (useful in CI). Uploaded files are stored temporarily and deleted automatically after **7 days**.
+
+**Example:**
 ```sh
 seer run
-# Output:
-# Build complete. Artifacts uploaded.
-# Debug trace available at: https://debug.seer.app/trace/abc123
+seer run --skip-build --artifacts ./my/custom/deploy
+seer run --consent --api-key sk_...
+SEER_API_KEY=sk_... seer run --consent
+seer run --silent=false   # re-enable build output (silent is true by default)
 ```
 
-This workflow streamlines the process of building, uploading, and accessing debug traces for your Solana programs.
+---
 
+### `seer login`
+
+Saves your Seer API key to the local config file so you don't have to pass it on every `run` invocation.
+
+```sh
+seer login [API_KEY]
+```
+
+- If `API_KEY` is omitted you will be prompted to enter it securely (input is hidden).
+- The key is stored in the platform config directory (e.g. `~/.config/seer/cli/api_key` on Linux).
+
+**Example:**
+```sh
+seer login sk_...
+seer login          # prompts for key
+```
+
+---
 
 ## How It Works
 
 ### `seer build`
-1. Detects all Solana native programs in the current project directory.
-2. Creates a `seer.toml` file for each program with `[profile.release] debug = true`.
-3. Builds each program with DWARF debug info using `cargo-build-sbf`.
-4. Restores the original state of project after building.
+1. Detects all Solana native programs in the current directory (supports workspaces).
+2. Builds each program with the configuration needed for tracing.
+3. Restores the original project state after building.
 
 ### `seer run`
-1. Performs all steps of `seer build` (see above).
-2. Collects the built artifacts (ELF files with debug info).
-3. Uploads the artifacts to a remote server for analysis.
-4. Receives a URL from the server with a debug trace or report.
-5. Prints the URL to the console for easy access.
+1. Performs all steps of `seer build` (unless `--skip-build` is used).
+2. Resolves the API key (flag → env → saved config).
+3. Prompts for upload consent (skippable with `--consent`).
+4. Collects built artifacts: program binaries, keypair files, and source paths.
+5. Uploads everything to the Seer backend.
+6. Prints the URL to the cust RPC-provider that would trace all your transactions.
 
-The `install` subcommand copies the binary to a directory in your PATH for global usage.
+---
 
+## Tracing Your Transaction
 
-## Output
+When `seer run` completes it prints a URL — this is a custom Seer RPC endpoint scoped to your upload session. You need to point your Solana tooling at it so that the transaction you want to trace is routed through Seer.
 
-- Compiled ELF files with `.so` extension are placed in `target/deploy` for each program (for both `seer build` and `seer run`).
-- These files contain DWARF debug data and can be inspected with tools like `llvm-dwarfdump` and `rustfilt`.
-- When using `seer run`, you will also receive a URL to a debug trace/report generated by the server after artifact upload.
-
-
-## Debug Data Verification
-To verify that the ELF files contain the correct debug info heuristically and manually you can run:
+**Native Solana CLI / program:**
 ```sh
-program=package_name; [ "$(llvm-dwarfdump --debug-info --debug-line target/deploy/$program.so | rustfilt | grep -o "$program" | wc -l)" -ge 3 ] && echo OK || echo FAIL
+solana --url <rpc-url> program deploy target/deploy/your_program.so
+# and just write the same endpoint inside your test connection
 ```
 
+**Anchor project:**
+```sh
+anchor test --provider.cluster <seer-rpc-url>
+# or set it in Anchor.toml:
+# [provider]
+# cluster = "<seer-rpc-url>"
+```
+
+Once your transaction is confirmed, open [Seer](https://app.seer.run/) and you'll find the full trace waiting for you — every cross-program invocation, account mutation, and log line mapped back to your source code.
 
 ## Requirements
+
 - Rust toolchain
 - Solana toolchain (`cargo-build-sbf`)
-- (For data manual verification) LLVM tools (`llvm-dwarfdump`)
-
-
+- A Seer API key (get one at [Seer](https://app.seer.run/))
 
 ---
 
 ## Local Gripmock Testing
 
-If you want instructions for local Gripmock testing of the CLI, please see the following document:
+If you want instructions for local Gripmock testing of the CLI, please see:
 
 - [gripmock.md](gripmock.md)
 
