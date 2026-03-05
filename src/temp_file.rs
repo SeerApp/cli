@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{PathBuf};
+use std::path::{Component, PathBuf};
 
 pub struct TempFile {
     cleanup: bool,
@@ -8,10 +8,12 @@ pub struct TempFile {
 
 impl TempFile {
     pub fn new(cleanup: bool, path: PathBuf) -> Self {
-        Self {
-            cleanup,
-            path,
-        }
+        let path = path
+            .components()
+            .filter(|c| *c != Component::CurDir)
+            .collect::<PathBuf>();
+
+        Self { cleanup, path }
     }
 
     pub fn path(&self) -> &PathBuf {
