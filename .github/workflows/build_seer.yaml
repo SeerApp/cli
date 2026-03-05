@@ -6,9 +6,6 @@ on:
       - 'v*'
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   dist_seer:
     name: Build seer Distributions
@@ -52,18 +49,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configure Git credentials and Cargo
-        shell: bash
-        run: |
-          # Configure Git URL rewriting first
-          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "ssh://git@github.com/"
-          git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "git@github.com:"
-          
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << EOF
-          [net]
-          git-fetch-with-cli = true
-          EOF
+      # Setup SSH for private dependencies
+      - name: Setup SSH for private dependencies
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Configure Buf registry token
         shell: bash
