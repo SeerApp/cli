@@ -2230,7 +2230,7 @@ checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
 [[package]]
 name = "s3-presign"
 version = "0.1.0"
-source = "git+ssh://git@github.com/SeerApp/s3-presign?tag=v0.1.0#3019c427275c781a696709974ba35b6bc14d398d"
+source = "git+https://github.com/SeerApp/s3-presign?tag=v0.1.0#3019c427275c781a696709974ba35b6bc14d398d"
 dependencies = [
  "base64",
  "chrono",
