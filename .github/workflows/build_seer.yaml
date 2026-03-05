@@ -55,6 +55,17 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
+      # Force Cargo to use the git CLI instead, which can use the agent properly.
+      - name: Configure Cargo to use git CLI (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p ~/.cargo
+          cat >> ~/.cargo/config.toml << 'EOF'
+          [net]
+          git-fetch-with-cli = true
+          EOF
+
       - name: Configure Buf registry token
         shell: bash
         run: echo "CARGO_REGISTRIES_BUF_TOKEN=${{ secrets.BUF_REGISTRY_TOKEN }}" >> $GITHUB_ENV
