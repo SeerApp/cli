@@ -26,13 +26,21 @@ curl -fsSL https://seer.run/install.sh | sh
 git clone https://github.com/SeerApp/cli .
 ```
 
-1. From root, build:
+2. Create a Buf account and generate token at: https://buf.build/
+
+3. Login to Buf registry:
+
+```
+cargo login --registry buf "Bearer {token}"
+```
+
+4. From root, build:
 
 ```sh
 cargo build --release
 ```
 
-1. Install `seer` globally:
+5. Install `seer` globally:
 
 ```sh
 ./target/release/seer install
