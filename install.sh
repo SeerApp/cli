@@ -1,22 +1,18 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 set -e
-
 # Error and dependency check helpers
 err() {
     echo "[ERROR] $1" >&2
     exit 1
 }
-
 need_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
         err "need '$1' (command not found)"
     fi
 }
-
 # Guaranteed cleanup of TMPDIR
 TMPDIR=""
 trap 'if [ -n "$TMPDIR" ] && [ -d "$TMPDIR" ]; then rm -rf "$TMPDIR"; fi' EXIT
-
 # Detect OS and ARCH
 detect_platform() {
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -49,12 +45,10 @@ detect_platform() {
     esac
     echo "$OS" "$ARCH"
 }
-
 # Get latest release tag from GitHub
 get_latest_release() {
     curl -fsSL "https://api.github.com/repos/SeerApp/cli/releases/latest" | grep '"tag_name"' | head -1 | sed -E 's/.*: "([^"]+)".*/\1/'
 }
-
 # Download and install binary
 install_cli() {
     OS="$1"
@@ -95,13 +89,11 @@ install_cli() {
             echo "export PATH=\"$INSTALL_DIR:\$PATH\""
         fi
     fi
-    "$INSTALL_DIR/seer" --version || true
-}
 
+}
 add_path_if_needed() {
   TARGET_DIR="$1"
   SHELL_RC=""
-
   # Detect user's shell rc file
   case "$SHELL" in
     */zsh)  SHELL_RC="$HOME/.zshrc" ;;
@@ -109,25 +101,23 @@ add_path_if_needed() {
     */fish) SHELL_RC="$HOME/.config/fish/config.fish" ;;
     *)      SHELL_RC="$HOME/.profile" ;;
   esac
-
   mkdir -p "$(dirname "$SHELL_RC")"
   touch "$SHELL_RC"
-
   # Only add if missing
   if ! grep -q "$TARGET_DIR" "$SHELL_RC"; then
     echo "export PATH=\"$TARGET_DIR:\$PATH\"" >> "$SHELL_RC"
     echo "[INFO] Added $TARGET_DIR to PATH in $SHELL_RC"
   fi
 }
-
 main() {
     set -e
     # Test deps
     for cmd in curl tar mktemp chmod mv grep uname; do
         need_cmd "$cmd"
     done
-    read OS ARCH < <(detect_platform)
+    platform=$(detect_platform)
+    OS=$(echo "$platform" | cut -d' ' -f1)
+    ARCH=$(echo "$platform" | cut -d' ' -f2)
     install_cli "$OS" "$ARCH"
 }
-
 main "$@"
