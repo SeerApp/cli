@@ -67,7 +67,6 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         crate::build::build(build_args)?;
     }
 
-    // ── Step 2: API key ──────────────────────────────────────────────────────
     let token = if let Some(ref key) = args.api_key {
         key.trim().to_string()
     } else {
@@ -92,13 +91,13 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         }
     } else {
         println!("Using user-provided artifacts directory: {}", args.artifacts.display());
-        println!("Note: Build artifacts (.debug, -keypair.json) must be generated only through seer build to work correctly. If you provide a custom directory, ensure it contains valid seer build outputs.");
+        println!("Note: Build artifacts (.so, .debug, -keypair.json) must be generated only through seer build to work correctly. If you provide a custom directory, ensure it contains valid seer build outputs.");
         args.artifacts.clone()
     };
 
     let targets: Vec<ProgramTarget> = get_targets(artifacts_dir.clone())?;
     if targets.is_empty() {
-        anyhow::bail!("No valid program targets found in {:?}. Ensure .debug and -keypair.json files exist and are valid.", artifacts_dir);
+        anyhow::bail!("No valid program targets found in {:?}. Ensure .so, .debug and -keypair.json files exist and are valid.", artifacts_dir);
     }
 
     let operator_pubkey = get_operator_pubkey()?;
@@ -118,6 +117,15 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                 PathBuf::from(format!("./{}", rel_str))
             }
         };
+
+        // .so
+        crate::run::artifacts::process_artifact(
+            &target.so_path,
+            &rel,
+            &mut files_to_send,
+            &mut artifacts,
+            &mut file_map
+        )?;
 
         // .debug
         crate::run::artifacts::process_artifact(

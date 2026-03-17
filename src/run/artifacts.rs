@@ -11,6 +11,7 @@ use crate::run::blobs::make_blob;
 
 #[derive(Debug, Clone)]
 pub struct ProgramTarget {
+    pub so_path: PathBuf,
     pub debug_path: PathBuf,
     pub json_path: PathBuf,
 }
@@ -20,6 +21,7 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
         anyhow::bail!("Artifacts folder does not exist: {:?}", artifacts_dir);
     }
 
+    let mut so_files = HashMap::<String, PathBuf>::new();
     let mut debug_files = HashMap::<String, PathBuf>::new();
     let mut json_files = HashMap::<String, PathBuf>::new();
 
@@ -35,6 +37,9 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
             path.extension().and_then(|e| e.to_str()),
             path.file_stem().and_then(|s| s.to_str()),
         ) {
+            (Some("so"), Some(stem)) => {
+                so_files.insert(stem.to_string(), path.clone());
+            }
             (Some("debug"), Some(stem)) => {
                 debug_files.insert(stem.to_string(), path.clone());
             }
@@ -50,10 +55,18 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
     let mut programs = Vec::<ProgramTarget>::new();
 
     let mut all_names = std::collections::HashSet::new();
+    for name in so_files.keys() { all_names.insert(name.clone()); }
     for name in debug_files.keys() { all_names.insert(name.clone()); }
     for name in json_files.keys() { all_names.insert(name.clone()); }
 
     for name in all_names {
+        let so_path = if let Some(v) = so_files.get(&name) {
+            v.clone()
+        } else {
+            println!("[seer][warn] Skipping program '{}' due to missing {}.so file.", name, name);
+            continue;
+        };
+
         let debug_path = if let Some(v) = debug_files.get(&name) {
             v.clone()
         } else {
@@ -75,6 +88,7 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
         }
 
         programs.push(ProgramTarget {
+            so_path,
             debug_path,
             json_path,
         });
