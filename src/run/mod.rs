@@ -48,6 +48,10 @@ pub struct RunArgs {
     /// API key to use for this run (overrides environment variable and config file).
     #[arg(long, value_name = "API_KEY", help = "API key to use for this run (overrides env/config)")]
     pub api_key: Option<String>,
+
+    /// Force build even if Solana CLI version is below v3.
+    #[arg(long, default_value_t = false)]
+    pub force: bool,
 }
 
 
@@ -58,6 +62,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         let build_args = crate::build::BuildArgs {
             cleanup_seer: args.cleanup_seer,
             silent: args.silent,
+            force: args.force,
         };
         crate::build::build(build_args)?;
     }
