@@ -10,17 +10,31 @@ pub struct SolanaProgram {
     pub manifest_path: PathBuf,
 }
 
-/// Detects Solana native programs in the current project (single-package or workspace)
+/// Detects Solana native programs in the current project (single-package or workspace).
+/// Only returns programs whose manifest is under the current working directory,
+/// so running from a subdirectory of a large workspace won't build everything.
 pub fn detect_solana_programs() -> Result<Vec<SolanaProgram>> {
+    let cwd = std::env::current_dir().context("Failed to get current working directory")?;
+    let cwd = dunce::canonicalize(&cwd).unwrap_or(cwd);
+
     let metadata = MetadataCommand::new()
         .exec()
         .context("Failed to run cargo metadata")?;
+
     let mut programs = Vec::new();
     for package in metadata.packages {
+        let manifest_std = package.manifest_path.clone().into_std_path_buf();
+        let manifest_dir = manifest_std.parent().unwrap_or(&manifest_std);
+        let manifest_dir = dunce::canonicalize(manifest_dir).unwrap_or(manifest_dir.to_path_buf());
+
+        if !manifest_dir.starts_with(&cwd) {
+            continue;
+        }
+
         if is_program(&package) {
             programs.push(SolanaProgram {
                 name: package.name.clone(),
-                manifest_path: package.manifest_path.clone().into_std_path_buf(),
+                manifest_path: manifest_std,
             });
         }
     }
