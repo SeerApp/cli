@@ -3,20 +3,56 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Installs the seer-cli binary to a directory in the user's PATH.
-/// On Windows, installs to %USERPROFILE%\.cargo\bin.
-/// On Unix, installs to /usr/local/bin.
+/// Matches install.sh location logic:
+/// - Tries $HOME/.local/bin if writable
+/// - Falls back to /usr/local/bin if writable
+/// - Otherwise uses $HOME/.local/bin and creates it
 pub fn install_binary() -> std::io::Result<()> {
     let exe = env::current_exe()?;
-    #[cfg(target_os = "windows")]
-    let target_dir = dirs::home_dir().unwrap().join(".cargo").join("bin");
-    #[cfg(not(target_os = "windows"))]
-    let target_dir = PathBuf::from("/usr/local/bin");
+    
+    let target_dir = if let Ok(home) = env::var("HOME") {
+        let local_bin = PathBuf::from(&home).join(".local").join("bin");
+
+        if is_writable(&local_bin) {
+            local_bin
+        } else {
+            let usr_local = PathBuf::from("/usr/local/bin");
+            if is_writable(&usr_local) {
+                usr_local
+            } else {
+                local_bin
+            }
+        }
+    } else {
+        PathBuf::from("/usr/local/bin")
+    };
+    
     fs::create_dir_all(&target_dir)?;
+    
     #[cfg(target_os = "windows")]
     let target_path = target_dir.join("seer.exe");
     #[cfg(not(target_os = "windows"))]
     let target_path = target_dir.join("seer");
+    
     fs::copy(&exe, &target_path)?;
     println!("seer installed to {}", target_path.display());
     Ok(())
+}
+
+fn is_writable(path: &PathBuf) -> bool {
+    match fs::metadata(path) {
+        Ok(metadata) => {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let permissions = metadata.permissions();
+                (permissions.mode() & 0o200) != 0
+            }
+            #[cfg(not(unix))]
+            {
+                !metadata.permissions().readonly()
+            }
+        }
+        Err(_) => false,
+    }
 }
