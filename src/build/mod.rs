@@ -45,9 +45,9 @@ pub fn build(args: BuildArgs) -> Result<()> {
 
     let programs = project::detect_solana_programs()?;
     if programs.is_empty() {
-        println!("No Solana native programs detected in this project.");
+        println!("No Solana programs detected in this project.");
     } else {
-        println!("Detected Solana native programs:");
+        println!("Detected Solana programs:");
         for prog in &programs {
             println!("- {} ({})", prog.name, prog.manifest_path.display());
         }
