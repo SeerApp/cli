@@ -18,6 +18,10 @@ pub struct BuildArgs {
     /// Force build even if Solana CLI version is below v3.
     #[arg(long)]
     pub force: bool,
+
+    /// Skip building Anchor IDL (passed through from seer run --no-idl).
+    #[arg(long, default_value_t = false)]
+    pub no_idl: bool,
 }
 
 pub fn build(args: BuildArgs) -> Result<()> {
@@ -62,9 +66,9 @@ pub fn build(args: BuildArgs) -> Result<()> {
 
         println!("\nBuilding programs...");
         let build_results = if args.silent {
-            build::build_all_programs_silent(&programs, &seer_toml_paths)
+            build::build_all_programs_silent(&programs, &seer_toml_paths, args.no_idl)
         } else {
-            build::build_all_programs(&programs, &seer_toml_paths)
+            build::build_all_programs(&programs, &seer_toml_paths, args.no_idl)
         };
         let (_, failed_debugs_raw) = debug_check::check_all_debug_files(&programs, args.silent);
         let failed_debugs = debug_check::collect_failed_debug_infos(&failed_debugs_raw);
