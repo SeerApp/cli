@@ -1,103 +1,36 @@
-name: Tag on version bump
+name: Tag from Cargo version
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - Cargo.toml
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
-  tag_if_version_changed:
+  tag:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Read current and previous version
-        id: version
-        shell: bash
+      - name: Read version
+        id: v
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag if missing
         run: |
           set -euo pipefail
 
-          CURRENT_VERSION=$(python3 - <<'PY'
-import tomllib
-from pathlib import Path
-data = tomllib.loads(Path("Cargo.toml").read_text())
-print(data["package"]["version"])
-PY
-)
-
-          PREV_VERSION=""
-          if git show "${{ github.event.before }}:Cargo.toml" >/tmp/prev_cargo.toml 2>/dev/null; then
-            PREV_VERSION=$(python3 - <<'PY'
-import tomllib
-from pathlib import Path
-data = tomllib.loads(Path("/tmp/prev_cargo.toml").read_text())
-print(data["package"]["version"])
-PY
-)
-          fi
-
-          echo "current=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-          echo "previous=$PREV_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Check if version increased
-        id: increased
-        shell: bash
-        run: |
-          set -euo pipefail
-          CURRENT="${{ steps.version.outputs.current }}"
-          PREVIOUS="${{ steps.version.outputs.previous }}"
-
-          # If no previous version is available (rare edge case), treat as no-op.
-          if [ -z "$PREVIOUS" ]; then
-            echo "value=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          IS_GREATER=$(python3 - <<'PY'
-import os
-
-def norm(v: str):
-    main = v.strip().split('-', 1)[0]
-    parts = main.split('.')
-    out = []
-    for p in parts[:3]:
-        n = ''.join(ch for ch in p if ch.isdigit())
-        out.append(int(n) if n else 0)
-    while len(out) < 3:
-        out.append(0)
-    return tuple(out)
-
-cur = norm(os.environ["CURRENT"])
-prev = norm(os.environ["PREVIOUS"])
-print("true" if cur > prev else "false")
-PY
-)
-
-          echo "value=$IS_GREATER" >> "$GITHUB_OUTPUT"
-        env:
-          CURRENT: ${{ steps.version.outputs.current }}
-          PREVIOUS: ${{ steps.version.outputs.previous }}
-
-      - name: Create and push tag when version changed
-        if: steps.version.outputs.current != '' && steps.increased.outputs.value == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          TAG="v${{ steps.version.outputs.current }}"
+          TAG="v${{ steps.v.outputs.version }}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists; skipping."
+            echo "$TAG already exists"
             exit 0
           fi
 
-          echo "Creating tag $TAG from version bump ${{ steps.version.outputs.previous }} -> ${{ steps.version.outputs.current }}"
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
