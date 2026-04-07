@@ -8,6 +8,7 @@ use std::process::Command;
 pub struct SolanaProgram {
     pub name: String,
     pub manifest_path: PathBuf,
+    pub is_anchor: bool,
 }
 
 /// Detects Solana native programs in the current project (single-package or workspace).
@@ -35,6 +36,7 @@ pub fn detect_solana_programs() -> Result<Vec<SolanaProgram>> {
             programs.push(SolanaProgram {
                 name: package.name.clone(),
                 manifest_path: manifest_std,
+                is_anchor: is_anchor_package(&package),
             });
         }
     }
@@ -68,6 +70,11 @@ pub fn get_solana_cli_major_version() -> Result<u64> {
         .map_err(|_| anyhow::anyhow!("Major version is not a number in: {}", version_part))?;
 
     Ok(major)
+}
+
+/// Checks if a package uses anchor-lang
+fn is_anchor_package(package: &Package) -> bool {
+    package.dependencies.iter().any(|d| d.name == "anchor-lang")
 }
 
 /// Heuristically checks if a package is a Solana native or Anchor program

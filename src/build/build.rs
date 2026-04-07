@@ -30,7 +30,7 @@ pub enum BuildStatus {
 }
 
 /// Build all programs and collect results
-pub fn build_all_programs(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, TempFile)]) -> Vec<BuildResult> {
+pub fn build_all_programs(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, TempFile)], no_idl: bool) -> Vec<BuildResult> {
     let mut build_results = Vec::new();
     for (i, prog) in programs.iter().enumerate() {
         println!("Building {}...", prog.name);
@@ -38,6 +38,11 @@ pub fn build_all_programs(programs: &[super::project::SolanaProgram], seer_toml_
         match build_program(&prog.manifest_path, seer_toml_path) {
             Ok(_) => {
                 println!("Built {} successfully.", prog.name);
+                if prog.is_anchor && !no_idl {
+                    if let Some(dir) = prog.manifest_path.parent() {
+                        build_anchor_idl_for_program(&prog.name, dir);
+                    }
+                }
                 build_results.push(BuildResult {
                     name: prog.name.clone(),
                     manifest_path: prog.manifest_path.clone(),
@@ -131,7 +136,7 @@ pub fn print_build_summary(
 }
 
 /// Build all programs silently, printing only minimal info
-pub fn build_all_programs_silent(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, TempFile)]) -> Vec<BuildResult> {
+pub fn build_all_programs_silent(programs: &[super::project::SolanaProgram], seer_toml_paths: &[(String, TempFile)], no_idl: bool) -> Vec<BuildResult> {
     let mut build_results = Vec::new();
     for (i, prog) in programs.iter().enumerate() {
         println!("Building {}...", prog.name);
@@ -139,6 +144,11 @@ pub fn build_all_programs_silent(programs: &[super::project::SolanaProgram], see
         match build_program_silent(&prog.manifest_path, seer_toml_path) {
             Ok(_) => {
                 println!("Built {} successfully.", prog.name);
+                if prog.is_anchor && !no_idl {
+                    if let Some(dir) = prog.manifest_path.parent() {
+                        build_anchor_idl_for_program(&prog.name, dir);
+                    }
+                }
                 build_results.push(BuildResult {
                     name: prog.name.clone(),
                     manifest_path: prog.manifest_path.clone(),
@@ -158,6 +168,45 @@ pub fn build_all_programs_silent(programs: &[super::project::SolanaProgram], see
         }
     }
     build_results
+}
+
+/// Run `anchor idl build` for a single program from its manifest directory and write to {workspace_root}/target/idl/{program_name}.json
+fn build_anchor_idl_for_program(name: &str, manifest_dir: &Path) {
+    let workspace_root = manifest_dir
+        .ancestors()
+        .find(|a| a.join("target/deploy").exists())
+        .unwrap_or(manifest_dir);
+
+    let idl_dir = workspace_root.join("target/idl");
+    if let Err(e) = std::fs::create_dir_all(&idl_dir) {
+        eprintln!("[seer][warn] Could not create target/idl directory: {}", e);
+        return;
+    }
+
+    let out_path = idl_dir.join(format!("{}.json", name.replace('-', "_")));
+
+    println!("Building Anchor IDL for {}...", name);
+    let output = Command::new("anchor")
+        .arg("idl")
+        .arg("build")
+        .arg("--out")
+        .arg(&out_path)
+        .current_dir(manifest_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output();
+    match output {
+        Ok(out) if out.status.success() => {
+            println!("Anchor IDL built for {} -> {}", name, out_path.display());
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            eprintln!("[seer][warn] Anchor IDL build failed for {}: {}", name, stderr.trim());
+        }
+        Err(e) => {
+            eprintln!("[seer][warn] Could not run 'anchor idl build' for {}: {}", name, e);
+        }
+    }
 }
 
 /// Build a single program silently (no build output, just status)

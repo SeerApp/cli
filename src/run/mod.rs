@@ -3,6 +3,7 @@ pub mod client;
 mod consent;
 mod artifacts;
 mod blobs;
+mod idl;
 mod source_paths;
 mod utils;
 mod upload;
@@ -52,6 +53,15 @@ pub struct RunArgs {
     /// Force build even if Solana CLI version is below v3.
     #[arg(long, default_value_t = false)]
     pub force: bool,
+
+    /// Path to an IDL file to include. Can be specified multiple times.
+    /// File name (without .json) must match the corresponding .so file name.
+    #[arg(long = "idl-file", action = clap::ArgAction::Append)]
+    pub idl_files: Vec<PathBuf>,
+
+    /// Skip IDL discovery and deployment.
+    #[arg(long, default_value_t = false)]
+    pub no_idl: bool,
 }
 
 
@@ -63,6 +73,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             cleanup_seer: args.cleanup_seer,
             silent: args.silent,
             force: args.force,
+            no_idl: args.no_idl,
         };
         crate::build::build(build_args)?;
     }
@@ -99,6 +110,19 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     if targets.is_empty() {
         anyhow::bail!("No valid program targets found in {:?}. Ensure .so, .debug and -keypair.json files exist and are valid.", artifacts_dir);
     }
+
+    // Collect program names from .so file stems for IDL matching
+    let program_names: Vec<String> = targets
+        .iter()
+        .filter_map(|t| t.so_path.file_stem().and_then(|s| s.to_str()).map(String::from))
+        .collect();
+
+    // Discover and validate IDL files
+    let idl_files = if args.no_idl {
+        Vec::new()
+    } else {
+        idl::collect_idl_files(&cwd, &program_names, &args.idl_files)?
+    };
 
     let operator_pubkey = get_operator_pubkey()?;
 
@@ -171,6 +195,26 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                 eprintln!("Failed to extract source paths for {:?}: {:?}", target.debug_path, err);
             }
         }
+    }
+
+    // Add validated IDL files as artifacts
+    for idl_file in &idl_files {
+        let rel = |p: &PathBuf| {
+            let rel_path = p.strip_prefix(&cwd).unwrap_or(p).to_path_buf();
+            let rel_str = rel_path.to_string_lossy();
+            if rel_str.starts_with("./") || rel_str.starts_with("../") {
+                rel_path
+            } else {
+                PathBuf::from(format!("./{}", rel_str))
+            }
+        };
+        crate::run::artifacts::process_artifact(
+            &idl_file.path,
+            &rel,
+            &mut files_to_send,
+            &mut artifacts,
+            &mut file_map,
+        )?;
     }
 
     // gRPC: connect and set up client

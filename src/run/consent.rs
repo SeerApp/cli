@@ -4,7 +4,7 @@ use std::{
 };
 
 pub fn ask_for_consent(files: &Vec<&PathBuf>) -> bool {
-    println!("You are about to upload the following files to Seer:\n");
+    println!("\nYou are about to upload the following files to Seer:\n");
 
     let mut sorted_files = files.clone();
     sorted_files.sort_by(|a, b| a.display().to_string().cmp(&b.display().to_string()));
