@@ -22,6 +22,11 @@ jobs:
           VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Configure git identity (local)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Create tag if missing
         run: |
           set -euo pipefail
