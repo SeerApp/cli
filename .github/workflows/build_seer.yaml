@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   dist_seer:
     name: Build seer Distributions
@@ -171,3 +174,30 @@ jobs:
         with:
           name: seer-${{ env.SHORT_TARGET_NAME }}
           path: seer-${{ env.SHORT_TARGET_NAME }}.tar.gz
+
+  publish_release:
+    name: Publish GitHub Release
+    needs: dist_seer
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Prepare release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-files
+          cp release-artifacts/**/seer-*.tar.gz release-files/
+          ls -lah release-files
+
+      - name: Create GitHub release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release-files/seer-*.tar.gz

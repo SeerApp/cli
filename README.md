@@ -46,6 +46,20 @@ cargo build --release
 ./target/release/seer install
 ```
 
+### Updating
+
+Use the built-in updater:
+
+```sh
+seer update
+```
+
+For non-interactive use:
+
+```sh
+seer update --yes
+```
+
 ---
 
 ### Sessions
