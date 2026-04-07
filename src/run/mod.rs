@@ -225,6 +225,6 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
 
     println!("");
     let run_resp = client.run_session(Request::new(RunSessionRequest {})).await?.into_inner();
-    println!("New Seer session at: {}", run_resp.solana_validator_url);
+    println!("New Seer session (15 minutes) live at: {}", run_resp.solana_validator_url);
     Ok(())
 }
