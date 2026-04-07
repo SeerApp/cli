@@ -32,5 +32,5 @@ jobs:
             exit 0
           fi
 
-          git tag -a "$TAG" -m "Release $TAG"
+          git tag "$TAG"
           git push origin "$TAG"
