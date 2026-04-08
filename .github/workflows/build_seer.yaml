@@ -2,61 +2,59 @@ name: Build seer Binaries
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Tag from Cargo version"]
-    types: [completed]
 
 permissions:
   contents: write
 
 jobs:
-  resolve_release_ref:
-    name: Resolve release ref
+  prepare_release:
+    name: Prepare release
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     outputs:
-      checkout_ref: ${{ steps.resolve.outputs.checkout_ref }}
-      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      checkout_ref: ${{ steps.prepare.outputs.checkout_ref }}
+      release_tag: ${{ steps.prepare.outputs.release_tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
-      - name: Resolve checkout ref and tag
-        id: resolve
+      - name: Resolve version and create tag if needed
+        id: prepare
         shell: bash
         run: |
           set -euo pipefail
 
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            echo "checkout_ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-            echo "release_tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git fetch --tags --force
           VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
           TAG="v${VERSION}"
-          TAG_SHA="$(git rev-list -n 1 "$TAG" 2>/dev/null || true)"
 
-          # Only release on workflow_run if the expected version tag points to this exact commit.
-          if [ -z "$TAG_SHA" ] || [ "$TAG_SHA" != "$GITHUB_SHA" ]; then
+          echo "event=${GITHUB_EVENT_NAME}"
+          echo "head_sha=${GITHUB_SHA}"
+          echo "candidate_tag=${TAG}"
+
+          git fetch --tags --force
+          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists; skipping release."
             echo "checkout_ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
             echo "release_tag=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${TAG}"
+          git push origin "${TAG}"
+
+          echo "Created and pushed ${TAG}"
           echo "checkout_ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "release_tag=${TAG}" >> "$GITHUB_OUTPUT"
 
   dist_seer:
     name: Build seer Distributions
-    needs: resolve_release_ref
+    needs: prepare_release
+    if: needs.prepare_release.outputs.release_tag != ''
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -97,7 +95,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve_release_ref.outputs.checkout_ref }}
+          ref: ${{ needs.prepare_release.outputs.checkout_ref }}
 
       # Setup SSH for private dependencies
       - name: Setup SSH for private dependencies
@@ -224,27 +222,24 @@ jobs:
 
   publish_release:
     name: Publish GitHub Release
-    needs: [resolve_release_ref, dist_seer]
+    needs: [prepare_release, dist_seer]
     runs-on: ubuntu-latest
-    if: needs.resolve_release_ref.outputs.release_tag != ''
+    if: needs.prepare_release.outputs.release_tag != ''
     steps:
-      - name: Download all build artifacts
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-artifacts
+          pattern: seer-*
+          merge-multiple: true
+          path: release-files
 
-      - name: Prepare release files
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release-files
-          cp release-artifacts/**/seer-*.tar.gz release-files/
-          ls -lah release-files
+      - name: Verify release files
+        run: ls -lah release-files
 
       - name: Create GitHub release and upload assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.resolve_release_ref.outputs.release_tag }}
-          name: ${{ needs.resolve_release_ref.outputs.release_tag }}
+          tag_name: ${{ needs.prepare_release.outputs.release_tag }}
+          name: ${{ needs.prepare_release.outputs.release_tag }}
           generate_release_notes: true
           files: release-files/seer-*.tar.gz
