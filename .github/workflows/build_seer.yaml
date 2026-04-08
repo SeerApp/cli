@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      draft:
+        description: 'Save as draft release (uncheck to publish immediately)'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -242,4 +247,5 @@ jobs:
           tag_name: ${{ needs.prepare_release.outputs.release_tag }}
           name: ${{ needs.prepare_release.outputs.release_tag }}
           generate_release_notes: true
+          draft: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.draft == 'true' }}
           files: release-files/seer-*.tar.gz
