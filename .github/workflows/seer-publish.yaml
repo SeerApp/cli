@@ -80,8 +80,8 @@ jobs:
         run: |
           TAG="${{ inputs.release_tag }}"
           SEVERITY="${{ inputs.severity }}"
-          gh release view "$TAG" --json body -q .body > current-body.txt
+          gh release view "$TAG" --repo "${{ github.repository }}" --json body -q .body > current-body.txt
           echo "" >> current-body.txt
           cat checksums-body.txt >> current-body.txt
           echo "<!-- seer-severity: ${SEVERITY} -->" >> current-body.txt
-          gh release edit "$TAG" --notes-file current-body.txt
+          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file current-body.txt
