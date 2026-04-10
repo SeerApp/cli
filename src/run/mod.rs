@@ -10,7 +10,7 @@ mod upload;
 
 
 use seer_protos_community_neoeinstein_prost::seer::sessions::v1::*;
-use tonic::Request;
+use tonic::{Code, Request, Status};
 use clap::Parser;
 use std::{collections::HashMap, path::PathBuf};
 use crate::run::client::SessionsClient;
@@ -21,6 +21,23 @@ use crate::run::source_paths::extract_source_paths;
 use crate::run::upload::upload_file;
 use crate::run::{auth::load_api_key, artifacts::ProgramTarget};
 use crate::temp_file::TempFile;
+
+/// Maps known auth failures to a single user-facing message. Covers both gRPC
+/// `Unauthenticated` and HTTP 401 bodies mis-parsed by tonic as a compression-flag error.
+fn map_sessions_rpc_error(status: Status) -> anyhow::Error {
+    const AUTH_FAILED: &str = "Authentication failed. Make sure you have created an API key at app.seer.run and authenticated with SEER_API_KEY or `seer login`.";
+
+    if status.code() == Code::Unauthenticated {
+        return anyhow::anyhow!("{AUTH_FAILED}");
+    }
+    let msg = status.message();
+    if msg.contains("invalid compression flag")
+        && (msg.contains("401") || msg.contains("Unauthorized"))
+    {
+        return anyhow::anyhow!("{AUTH_FAILED}");
+    }
+    status.into()
+}
 
 #[derive(Parser, Debug)]
 pub struct RunArgs {
@@ -228,7 +245,12 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         }),
     };
 
-    let create_resp = client.create_session(Request::new(create_req)).await?.into_inner();
+    println!("");
+    let create_resp = client
+        .create_session(Request::new(create_req))
+        .await
+        .map_err(map_sessions_rpc_error)?
+        .into_inner();
 
     let mut missing_uploads = Vec::new();
     for upload_info in &create_resp.upload_info {
@@ -241,7 +263,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     }
 
     if missing_uploads.is_empty() {
-        println!("\nAll required files are already present on the server. No uploads needed.");
+        println!("All required files are already present on the server. No uploads needed.");
     } 
     else {
         let missing_paths: Vec<&PathBuf> = missing_uploads.iter().map(|(_, path)| *path).collect();
@@ -268,7 +290,11 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     }
 
     println!("");
-    let run_resp = client.run_session(Request::new(RunSessionRequest {})).await?.into_inner();
+    let run_resp = client
+        .run_session(Request::new(RunSessionRequest {}))
+        .await
+        .map_err(map_sessions_rpc_error)?
+        .into_inner();
     println!("New Seer session (15 minutes) live at: {}", run_resp.solana_validator_url);
     Ok(())
 }
