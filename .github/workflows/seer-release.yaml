@@ -1,4 +1,4 @@
-name: Build seer Binaries
+name: Release seer
 
 on:
   push:
