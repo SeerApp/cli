@@ -72,6 +72,7 @@ jobs:
           generate_release_notes: true
           draft: ${{ inputs.draft }}
           files: release-files/seer-*.tar.gz
+          overwrite: true
 
       - name: Append checksums and severity to release body
         env:
