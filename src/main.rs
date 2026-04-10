@@ -50,25 +50,14 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Build(args) => {
-            let rt = tokio::runtime::Runtime::new()?;
-            let _ = rt.block_on(update::maybe_notify_update());
-            build(args)
-        }
-        Commands::Run(args) => {
-            let rt = tokio::runtime::Runtime::new()?;
-            let _ = rt.block_on(update::maybe_notify_update());
-            run(args)
-        }
+        Commands::Build(args) => {update::with_update_check(|| build(args))},
+        Commands::Run(args) => {update::with_update_check(|| run(args))},
         Commands::Install => {
             install::install_binary().map_err(|e| anyhow::anyhow!(e))?;
             Ok(())
         },
         Commands::Login { api_key } => {
-            let rt = tokio::runtime::Runtime::new()?;
-            let _ = rt.block_on(update::maybe_notify_update());
-            run::auth::login_command(api_key)?;
-            Ok(())
+            update::with_update_check(|| run::auth::login_command(api_key).map_err(anyhow::Error::from))
         }
         Commands::Update { yes, version } => {
             let rt = tokio::runtime::Runtime::new()?;

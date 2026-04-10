@@ -1,6 +1,6 @@
 [package]
 name = "seer"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["deithblaidd"]
 description = "CLI tool to build Solana native programs with DWARF debug info"
@@ -36,6 +36,8 @@ seer_protos_community_neoeinstein-tonic = { version = "0.5.0-20260106122759-57b9
 seer_protos_community_neoeinstein-prost = { version = "0.5.0-20260302203516-285b1dfed434.2", registry = "buf" }
 s3-presign = { git = "https://github.com/SeerApp/s3-presign", tag = "v0.1.0" }
 futures = "0.3"
+flate2 = "1"
+tar = "0.4"
 dunce = "1"
 anchor-lang-idl-spec = "0.1.0"
 codama-nodes = "0.8.0"
