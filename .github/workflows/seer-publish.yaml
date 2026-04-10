@@ -1,0 +1,68 @@
+name: "Publish Release"
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Tag to publish"
+        type: string
+        required: true
+      severity:
+        description: "Update severity level (minor/major/critical)"
+        type: string
+        default: minor
+      draft:
+        description: "Publish as draft"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish_release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: seer-*
+          merge-multiple: true
+          path: release-files
+
+      - name: Verify release files
+        run: ls -lah release-files
+
+      - name: Build checksums comment
+        run: |
+          {
+            echo "<!-- seer-checksums"
+            for f in release-files/*.sha256; do
+              NAME=$(basename "$f" .sha256)
+              HASH=$(cat "$f")
+              echo "$NAME=$HASH"
+            done
+            echo "-->"
+          } > checksums-body.txt
+
+      - name: Create GitHub release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_tag }}
+          generate_release_notes: true
+          draft: ${{ inputs.draft }}
+          files: release-files/seer-*.tar.gz
+
+      - name: Append checksums and severity to release body
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          SEVERITY="${{ inputs.severity }}"
+          gh release view "$TAG" --json body -q .body > current-body.txt
+          echo "" >> current-body.txt
+          cat checksums-body.txt >> current-body.txt
+          echo "<!-- seer-severity: ${SEVERITY} -->" >> current-body.txt
+          gh release edit "$TAG" --notes-file current-body.txt

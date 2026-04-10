@@ -9,243 +9,37 @@ on:
         description: 'Save as draft release (uncheck to publish immediately)'
         type: boolean
         default: true
+      severity:
+        description: 'Update severity level'
+        type: choice
+        default: minor
+        options:
+          - minor
+          - major
+          - critical
 
 permissions:
   contents: write
 
 jobs:
-  prepare_release:
-    name: Prepare release
-    runs-on: ubuntu-latest
-    outputs:
-      checkout_ref: ${{ steps.prepare.outputs.checkout_ref }}
-      release_tag: ${{ steps.prepare.outputs.release_tag }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+  prepare:
+    uses: ./.github/workflows/seer-prepare.yaml
+    secrets: inherit
 
-      - name: Resolve version and create tag if needed
-        id: prepare
-        shell: bash
-        run: |
-          set -euo pipefail
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.release_tag != ''
+    uses: ./.github/workflows/seer-build.yaml
+    with:
+      checkout_ref: ${{ needs.prepare.outputs.checkout_ref }}
+    secrets: inherit
 
-          VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
-          TAG="v${VERSION}"
-
-          echo "event=${GITHUB_EVENT_NAME}"
-          echo "head_sha=${GITHUB_SHA}"
-          echo "candidate_tag=${TAG}"
-
-          git fetch --tags --force
-          if git rev-parse "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists; skipping release."
-            echo "checkout_ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-            echo "release_tag=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "${TAG}"
-          git push origin "${TAG}"
-
-          echo "Created and pushed ${TAG}"
-          echo "checkout_ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "release_tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-  dist_seer:
-    name: Build seer Distributions
-    needs: prepare_release
-    if: needs.prepare_release.outputs.release_tag != ''
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux x64 (native)
-          - os: ubuntu-22.04
-            platform: linux
-            target: x86_64-unknown-linux-gnu
-            architecture: amd64
-
-          # macOS x64
-          - os: macos-latest
-            platform: darwin
-            target: x86_64-apple-darwin
-            architecture: amd64
-
-          # macOS arm64
-          - os: macos-latest
-            platform: darwin
-            target: aarch64-apple-darwin
-            architecture: arm64
-
-          # Windows x64
-          - os: windows-latest
-            platform: windows
-            target: x86_64-pc-windows-msvc
-            architecture: amd64
-
-    steps:
-      # Windows LF fix
-      - name: Configure git to use LF (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          git config --global core.autocrlf false
-          git config --global core.eol lf
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare_release.outputs.checkout_ref }}
-
-      # Setup SSH for private dependencies
-      - name: Setup SSH for private dependencies
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      # Force Cargo to use the git CLI instead, which can use the agent properly.
-      - name: Configure Cargo to use git CLI (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          mkdir -p ~/.cargo
-          cat >> ~/.cargo/config.toml << 'EOF'
-          [net]
-          git-fetch-with-cli = true
-          EOF
-
-      - name: Configure Buf registry token
-        shell: bash
-        run: echo "CARGO_REGISTRIES_BUF_TOKEN=${{ secrets.BUF_REGISTRY_TOKEN }}" >> $GITHUB_ENV
-
-      # Rust toolchain
-      - name: Install Rust toolchain
-        run: rustup toolchain install 1.86.0 --profile minimal --target ${{ matrix.target }}
-
-      - name: Install Rust target
-        run: rustup target add ${{ matrix.target }}
-
-      # Rust version hash (cache key)
-      - name: Get Rust version (unix)
-        if: matrix.os != 'windows-latest'
-        run: echo "RUST_VERSION_HASH=$(rustc --version | shasum -a 256 | awk '{print $1}')" >> $GITHUB_ENV
-
-      - name: Get Rust version (windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: echo "RUST_VERSION_HASH=$(rustc --version | sha256sum | awk '{print $1}')" >> $GITHUB_ENV
-
-      # Cargo cache
-      - name: Cache cargo
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/
-            ./target/${{ matrix.target }}/release/
-          key: ${{ runner.os }}-rust-${{ env.RUST_VERSION_HASH }}-cargo-${{ hashFiles('./Cargo.lock') }}
-
-      # macOS ARM cross-compile vars
-      - name: Configure macos-arm64 cross compile
-        if: matrix.target == 'aarch64-apple-darwin'
-        run: |
-          echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
-          echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
-
-      # OpenSSL macOS
-      - name: Configure OpenSSL (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install openssl@1.1 || true
-          echo "OPENSSL_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@1.1)/include" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@1.1)/lib" >> $GITHUB_ENV
-
-      # LLVM macOS
-      - name: Install LLVM (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew install llvm || true
-          echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
-          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
-
-      # Linux deps (x64 only, not arm64)
-      - name: Install Linux deps
-        if: matrix.os == 'ubuntu-22.04' && matrix.target != 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            clang \
-            llvm-dev \
-            libclang-dev \
-            pkg-config \
-            libudev-dev
-
-      # Artifact name
-      - name: Configure artifact names
-        shell: bash
-        run: |
-          echo "SHORT_TARGET_NAME=${{ matrix.platform }}-${{ matrix.architecture }}" >> $GITHUB_ENV
-
-      # Build
-
-      # Linux x64 — native cargo
-      - name: Build - Cargo (Linux x64)
-        if: matrix.os == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
-        run: cargo build --release --locked --target ${{ matrix.target }}
-
-      # macOS
-      - name: Build - Cargo (macOS)
-        if: matrix.os == 'macos-latest'
-        run: cargo build --release --locked --target ${{ matrix.target }}
-
-      # Windows
-      - name: Build - Cargo (Windows)
-        if: matrix.os == 'windows-latest'
-        run: cargo build --release --locked --target ${{ matrix.target }}
-
-      #Archive and upload artifacts
-
-      - name: Compress artifact (not windows)
-        if: matrix.os != 'windows-latest'
-        run: tar -C target/${{ matrix.target }}/release -zcvf seer-${{ env.SHORT_TARGET_NAME }}.tar.gz seer
-
-      - name: Compress artifact (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: tar -czf seer-${{ env.SHORT_TARGET_NAME }}.tar.gz -C target/${{ matrix.target }}/release seer.exe
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: seer-${{ env.SHORT_TARGET_NAME }}
-          path: seer-${{ env.SHORT_TARGET_NAME }}.tar.gz
-
-  publish_release:
-    name: Publish GitHub Release
-    needs: [prepare_release, dist_seer]
-    runs-on: ubuntu-latest
-    if: needs.prepare_release.outputs.release_tag != ''
-    steps:
-      - name: Download release artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: seer-*
-          merge-multiple: true
-          path: release-files
-
-      - name: Verify release files
-        run: ls -lah release-files
-
-      - name: Create GitHub release and upload assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare_release.outputs.release_tag }}
-          name: ${{ needs.prepare_release.outputs.release_tag }}
-          generate_release_notes: true
-          draft: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.draft == 'true' }}
-          files: release-files/seer-*.tar.gz
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.release_tag != ''
+    uses: ./.github/workflows/seer-publish.yaml
+    with:
+      release_tag: ${{ needs.prepare.outputs.release_tag }}
+      severity: ${{ github.event.inputs.severity || 'minor' }}
+      draft: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.draft == 'true' }}
+    secrets: inherit
