@@ -1,6 +1,24 @@
 name: "Publish Release"
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to publish (e.g. v1.2.3)"
+        type: string
+        required: true
+      severity:
+        description: "Update severity level"
+        type: choice
+        default: minor
+        options:
+          - minor
+          - major
+          - critical
+      draft:
+        description: "Save as draft release (uncheck to publish immediately)"
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       release_tag:

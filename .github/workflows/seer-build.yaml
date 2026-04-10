@@ -1,6 +1,12 @@
 name: "Build Distributions"
 
 on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: "Git SHA to checkout (leave empty for HEAD)"
+        type: string
+        default: ''
   workflow_call:
     inputs:
       checkout_ref:
