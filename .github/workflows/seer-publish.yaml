@@ -42,6 +42,11 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -71,7 +76,9 @@ jobs:
           name: ${{ inputs.release_tag }}
           generate_release_notes: true
           draft: ${{ inputs.draft }}
-          files: release-files/seer-*.tar.gz
+          files: |
+            release-files/seer-*.tar.gz
+            install.sh
           overwrite: true
 
       - name: Append checksums and severity to release body
