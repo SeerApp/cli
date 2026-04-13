@@ -10,7 +10,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 const GITHUB_REPO: &str = "SeerApp/cli";
-const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60 * 24);
+const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60 * 6);
 
 /// Urgency level embedded in the GitHub release body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
