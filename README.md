@@ -102,21 +102,20 @@ The Seer session currently automatically ends after 15 minutes of inactivity.
 
 You need to point your Solana tooling at the Seer session URL so that the transaction you want to trace is routed through Seer.
 
-**Native Solana CLI / program:**
-
-```sh
-solana --url https://rpc.seer.run/... program deploy target/deploy/your_program.so
-# and just write the same endpoint inside your test connection
-```
-
 **Anchor project:**
 
 ```sh
-anchor test --provider.cluster https://rpc.seer.run/...
+anchor test --skip-deploy --provider.cluster https://rpc.seer.run/...
 # or set it in Anchor.toml:
 # [provider]
 # cluster = "https://rpc.seer.run/..."
 ```
+
+**Native project:**
+
+Specify your Seer session URL inside your test. 
+
+> ⚠️ Make sure to disable executable program deployments in your tests. Seer sessions only support launching the programs you specify under `./target/`. Outside of that, they use default mainnet account state for all execution logic. 
 
 ---
 
