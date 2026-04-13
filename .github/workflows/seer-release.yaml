@@ -1,4 +1,4 @@
-name: Build seer Binaries
+name: Release seer
 
 on:
   push:
@@ -17,6 +17,10 @@ on:
           - minor
           - major
           - critical
+      force:
+        description: '⚠️ Force release even if tag already exists — will overwrite existing assets and release body'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -24,6 +28,8 @@ permissions:
 jobs:
   prepare:
     uses: ./.github/workflows/seer-prepare.yaml
+    with:
+      force: ${{ github.event.inputs.force == 'true' }}
     secrets: inherit
 
   build:

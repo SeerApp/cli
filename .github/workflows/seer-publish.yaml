@@ -1,6 +1,24 @@
 name: "Publish Release"
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to publish (e.g. v1.2.3)"
+        type: string
+        required: true
+      severity:
+        description: "Update severity level"
+        type: choice
+        default: minor
+        options:
+          - minor
+          - major
+          - critical
+      draft:
+        description: "Save as draft release (uncheck to publish immediately)"
+        type: boolean
+        default: true
   workflow_call:
     inputs:
       release_tag:
@@ -24,6 +42,11 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
@@ -53,7 +76,10 @@ jobs:
           name: ${{ inputs.release_tag }}
           generate_release_notes: true
           draft: ${{ inputs.draft }}
-          files: release-files/seer-*.tar.gz
+          files: |
+            release-files/seer-*.tar.gz
+            install.sh
+          overwrite: true
 
       - name: Append checksums and severity to release body
         env:
@@ -61,8 +87,8 @@ jobs:
         run: |
           TAG="${{ inputs.release_tag }}"
           SEVERITY="${{ inputs.severity }}"
-          gh release view "$TAG" --json body -q .body > current-body.txt
+          gh release view "$TAG" --repo "${{ github.repository }}" --json body -q .body > current-body.txt
           echo "" >> current-body.txt
           cat checksums-body.txt >> current-body.txt
           echo "<!-- seer-severity: ${SEVERITY} -->" >> current-body.txt
-          gh release edit "$TAG" --notes-file current-body.txt
+          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file current-body.txt
