@@ -15,7 +15,7 @@ use clap::Parser;
 use std::{collections::HashMap, path::PathBuf};
 use crate::run::client::SessionsClient;
 use crate::run::consent::ask_for_consent;
-use crate::run::artifacts::{get_targets, create_pubkey_file, get_operator_pubkey};
+use crate::run::artifacts::{get_targets, check_debug_artifacts, create_pubkey_file, get_operator_pubkey};
 use crate::run::blobs::make_blob;
 use crate::run::source_paths::extract_source_paths;
 use crate::run::upload::upload_file;
@@ -67,10 +67,6 @@ pub struct RunArgs {
     #[arg(long, value_name = "API_KEY", help = "API key to use for this run (overrides env/config)")]
     pub api_key: Option<String>,
 
-    /// Force build even if Solana CLI version is below v3.
-    #[arg(long, default_value_t = false)]
-    pub force: bool,
-
     /// Path to an IDL file to include. Can be specified multiple times.
     /// File name (without .json) must match the corresponding .so file name.
     #[arg(long = "idl-file", action = clap::ArgAction::Append)]
@@ -89,7 +85,6 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         let build_args = crate::build::BuildArgs {
             cleanup_seer: args.cleanup_seer,
             silent: args.silent,
-            force: args.force,
             no_idl: args.no_idl,
         };
         crate::build::build(build_args)?;
@@ -127,6 +122,11 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     if targets.is_empty() {
         anyhow::bail!("No valid program targets found in {:?}. Ensure .so, .debug and -keypair.json files exist and are valid.", artifacts_dir);
     }
+
+    let targets = match check_debug_artifacts(&targets)? {
+        Some(valid) => valid,
+        None => return Ok(()),
+    };
 
     // Collect program names from .so file stems for IDL matching
     let program_names: Vec<String> = targets
