@@ -9,14 +9,6 @@ on:
         description: 'Save as draft release (uncheck to publish immediately)'
         type: boolean
         default: true
-      severity:
-        description: 'Update severity level'
-        type: choice
-        default: minor
-        options:
-          - minor
-          - major
-          - critical
       force:
         description: '⚠️ Force release even if tag already exists — will overwrite existing assets and release body'
         type: boolean
@@ -46,6 +38,5 @@ jobs:
     uses: ./.github/workflows/seer-publish.yaml
     with:
       release_tag: ${{ needs.prepare.outputs.release_tag }}
-      severity: ${{ github.event.inputs.severity || 'minor' }}
       draft: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.draft == 'true' }}
     secrets: inherit

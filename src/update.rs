@@ -12,26 +12,21 @@ use sha2::{Digest, Sha256};
 const GITHUB_REPO: &str = "SeerApp/cli";
 const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60 * 6);
 
-/// Urgency level embedded in the GitHub release body.
+/// Urgency level derived from the version number (breaking.major.minor).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     Minor,
     Major,
-    Critical,
+    Breaking,
 }
 
 impl Severity {
-    /// Parses `<!-- seer-severity: <level> -->` from a release body.
-    fn from_release_body(body: &str) -> Self {
-        for line in body.lines() {
-            let l = line.trim();
-            if !l.starts_with("<!--") || !l.contains("seer-severity:") {
-                continue;
-            }
-            if l.contains("critical") { return Severity::Critical; }
-            if l.contains("major")    { return Severity::Major; }
-            return Severity::Minor;
-        }
+    /// Derives severity by comparing version parts under the `breaking.major.minor` scheme.
+    fn from_versions(current: &str, latest: &str) -> Self {
+        let cur = parse_version_parts(current);
+        let lat = parse_version_parts(latest);
+        if lat[0] > cur[0] { return Severity::Breaking; }
+        if lat[1] > cur[1] { return Severity::Major; }
         Severity::Minor
     }
 
@@ -39,21 +34,14 @@ impl Severity {
         match self {
             Severity::Minor    => "minor",
             Severity::Major    => "major",
-            Severity::Critical => "critical",
+            Severity::Breaking => "breaking",
         }
     }
 
-    fn from_str(s: &str) -> Self {
-        match s {
-            "critical" => Severity::Critical,
-            "major"    => Severity::Major,
-            _          => Severity::Minor,
-        }
-    }
 }
 
 pub struct UpdateCheckHandle {
-    rx: Option<std::sync::mpsc::Receiver<(String, Severity)>>,
+    rx: Option<std::sync::mpsc::Receiver<String>>,
 }
 
 impl UpdateCheckHandle {
@@ -65,24 +53,21 @@ impl UpdateCheckHandle {
             return;
         }
         let current = env!("CARGO_PKG_VERSION");
-        let latest: Option<(String, Severity)> = self
+        let latest: Option<String> = self
             .rx
             .and_then(|rx| rx.try_recv().ok())
             .or_else(read_cached_latest);
-        if let Some((ref version, severity)) = latest {
-            if compare_versions(&clean_version(version), current) > 0 {
-
+        if let Some(ref version) = latest {
+            let clean_latest = clean_version(version);
+            if compare_versions(&clean_latest, current) > 0 {
+                let severity = Severity::from_versions(current, &clean_latest);
                 let (colour, reset) = match severity {
                     Severity::Minor    => ("\x1b[32m", "\x1b[0m"), // green
                     Severity::Major    => ("\x1b[33m", "\x1b[0m"), // yellow
-                    Severity::Critical => ("\x1b[31m", "\x1b[0m"), // red
+                    Severity::Breaking => ("\x1b[31m", "\x1b[0m"), // red
                 };
-                let label = match severity {
-                    Severity::Minor    => "minor",
-                    Severity::Major    => "major",
-                    Severity::Critical => "critical",
-                };
-                let suffix = if severity == Severity::Critical { " now" } else { "" };
+                let label = severity.as_str();
+                let suffix = if severity == Severity::Breaking { " now" } else { "" };
                 println!(
                     "\nNew {colour}{label}{reset} update available: {version} (current {current}). \
                      Run `seer update`{suffix}."
@@ -108,9 +93,9 @@ pub fn begin_update_check() -> UpdateCheckHandle {
             .enable_all()
             .build()
             .expect("tokio rt for update check");
-        if let Ok((tag, severity)) = rt.block_on(fetch_latest_release_info()) {
-            let _ = write_cached_latest(&tag, severity);
-            let _ = tx.send((tag, severity));
+        if let Ok(tag) = rt.block_on(fetch_latest_tag()) {
+            let _ = write_cached_latest(&tag);
+            let _ = tx.send(tag);
         }
         // On error: channel closes, show_notice() falls back to cached value.
     });
@@ -204,22 +189,20 @@ pub async fn run_update_command(yes: bool, requested_version: Option<String>) ->
     Ok(())
 }
 
-fn read_cached_latest() -> Option<(String, Severity)> {
+fn read_cached_latest() -> Option<String> {
     let content = fs::read_to_string(update_cache_path().ok()?).ok()?;
     let content = content.trim();
     if content.is_empty() { return None; }
-    let mut parts = content.splitn(2, ':');
-    let version  = parts.next()?.to_string();
-    let severity = parts.next().map(Severity::from_str).unwrap_or(Severity::Minor);
-    Some((version, severity))
+    // Legacy format was "version:severity" — strip severity if present.
+    Some(content.split(':').next()?.to_string())
 }
 
-fn write_cached_latest(version: &str, severity: Severity) -> anyhow::Result<()> {
+fn write_cached_latest(version: &str) -> anyhow::Result<()> {
     let path = update_cache_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&path, format!("{}:{}", version, severity.as_str()))?;
+    fs::write(&path, version)?;
     Ok(())
 }
 
@@ -262,8 +245,8 @@ async fn validate_tag_exists(tag: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Fetches the latest release tag and its severity from the release body.
-async fn fetch_latest_release_info() -> anyhow::Result<(String, Severity)> {
+/// Fetches the latest release tag from GitHub.
+async fn fetch_latest_tag() -> anyhow::Result<String> {
     let url = format!("https://api.github.com/repos/{}/releases/latest", GITHUB_REPO);
     let release: Value = github_client()?
         .get(&url)
@@ -272,22 +255,11 @@ async fn fetch_latest_release_info() -> anyhow::Result<(String, Severity)> {
         .error_for_status()?
         .json()
         .await?;
-    let tag = release
+    release
         .get("tag_name")
         .and_then(Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| anyhow::anyhow!("Missing tag_name in latest release response"))?;
-    let severity = release
-        .get("body")
-        .and_then(Value::as_str)
-        .map(Severity::from_release_body)
-        .unwrap_or(Severity::Minor);
-    Ok((tag, severity))
-}
-
-/// Fetches only the tag name (used by resolve_target_tag and check_for_update).
-async fn fetch_latest_tag() -> anyhow::Result<String> {
-    Ok(fetch_latest_release_info().await?.0)
+        .ok_or_else(|| anyhow::anyhow!("Missing tag_name in latest release response"))
 }
 
 /// Fetches the SHA256 checksum for `file_name` from the hidden checksum comment in the release body.
