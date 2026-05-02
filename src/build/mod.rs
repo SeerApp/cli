@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 
 mod build;
-mod debug_check;
+pub mod debug_check;
 mod debug_flag;
 mod project;
 
@@ -15,38 +15,12 @@ pub struct BuildArgs {
     #[arg(long)]
     pub silent: bool,
 
-    /// Force build even if Solana CLI version is below v3.
-    #[arg(long)]
-    pub force: bool,
-
     /// Skip building Anchor IDL (passed through from seer run --no-idl).
     #[arg(long, default_value_t = false)]
     pub no_idl: bool,
 }
 
 pub fn build(args: BuildArgs) -> Result<()> {
-    // Check Solana CLI version
-    match project::get_solana_cli_major_version() {
-        Ok(major) if major < 3 => {
-            if !args.force {
-                eprintln!("WARNING: Solana CLI version is below v3. Seer requires Solana CLI v3 or higher to work correctly.");
-                eprintln!("         Your build may produce broken artifacts.");
-                eprintln!("         Update your Solana CLI or use --force to build anyway.");
-                anyhow::bail!("Solana CLI version too low.");
-            } else {
-                eprintln!("WARNING: Solana CLI version is below v3. This is a broken build — Solana CLI must be updated for Seer to work correctly.");
-            }
-        }
-        Ok(_) => {} // v3 or higher, all good
-        Err(e) => {
-            eprintln!("WARNING: Could not determine Solana CLI version: {}", e);
-            if !args.force {
-                eprintln!("         Use --force to build anyway.");
-                anyhow::bail!("Build aborted.");
-            }
-        }
-    }
-
     let programs = project::detect_solana_programs()?;
     if programs.is_empty() {
         println!("No Solana programs detected in this project.");

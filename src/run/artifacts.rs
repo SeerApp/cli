@@ -5,6 +5,7 @@ use solana_sdk::signature::read_keypair_file;
 use solana_sdk::signer::Signer;
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use crate::run::blobs::make_blob;
 
@@ -96,6 +97,67 @@ pub fn get_targets(artifacts_dir: PathBuf) -> Result<Vec<ProgramTarget>> {
 
     Ok(programs)
 }
+
+
+/// Checks all target `.debug` files for proper DWARF info.
+/// Returns `Ok(None)` if the user declines to proceed.
+/// Returns `Ok(Some(valid_targets))` — with invalid targets excluded — if the user proceeds.
+pub fn check_debug_artifacts(targets: &[ProgramTarget]) -> Result<Option<Vec<ProgramTarget>>> {
+    let (valid, failed_names): (Vec<&ProgramTarget>, Vec<(String, &std::path::Path)>) = targets
+        .iter()
+        .fold((Vec::new(), Vec::new()), |(mut valid, mut failed), t| {
+            let name = t
+                .debug_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            match crate::build::debug_check::check_debug_file(&t.debug_path) {
+                Ok(true) => valid.push(t),
+                Ok(false) | Err(_) => failed.push((name, t.debug_path.as_path())),
+            }
+            (valid, failed)
+        });
+
+    if failed_names.is_empty() {
+        return Ok(Some(targets.to_vec()));
+    }
+
+    let cwd = std::env::current_dir().ok();
+
+    if failed_names.len() == 1 {
+        eprintln!("\n[seer][warn] The following .debug file does not contain proper DWARF debug information:");
+    } else {
+        eprintln!("\n[seer][warn] The following .debug files do not contain proper DWARF debug information:");
+    }
+    for (name, path) in &failed_names {
+        let display = cwd
+            .as_deref()
+            .and_then(|cwd| path.strip_prefix(cwd).ok())
+            .unwrap_or(path);
+        eprintln!("  - {} ({})", name, display.display());
+    }
+    eprintln!("\nThis typically happens when building with Solana CLI below v3.");
+    eprintln!("These programs would not work correctly and would not be deployed by Seer.");
+
+    if valid.is_empty() {
+        eprintln!("No valid programs remaining — nothing to deploy.");
+        return Ok(None);
+    }
+
+    loop {
+        print!("\nDo you want to proceed with the remaining {} valid program(s)? (yes/no): ", valid.len());
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        match input.trim().to_ascii_lowercase().as_str() {
+            "yes" | "y" => return Ok(Some(valid.into_iter().cloned().collect())),
+            "no" | "n" => return Ok(None),
+            _ => eprintln!("Please enter 'yes'/'y' or 'no'/'n'."),
+        }
+    }
+}
+
 
 pub fn process_artifact(
     path: &PathBuf,
