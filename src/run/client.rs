@@ -64,10 +64,11 @@ impl SessionsClient {
         self.inner.create_session(request).await
     }
 
-    pub async fn run_session(
+    pub async fn run_session_stream(
         &mut self,
-        request: Request<RunSessionRequest>,
-    ) -> Result<tonic::Response<RunSessionResponse>, tonic::Status> {
-        self.inner.run_session(request).await
+        request: Request<RunSessionStreamRequest>,
+    ) -> Result<tonic::Response<tonic::Streaming<RunSessionStreamResponse>>, tonic::Status> {
+        self.inner.run_session_stream(request).await
     }
 }
+
