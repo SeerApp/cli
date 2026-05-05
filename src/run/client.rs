@@ -41,6 +41,9 @@ impl SessionsClient {
         }
 
         let channel = endpoint
+            .http2_keep_alive_interval(std::time::Duration::from_secs(30))
+            .keep_alive_timeout(std::time::Duration::from_secs(10))
+            .keep_alive_while_idle(true)
             .connect()
             .await
             .context("Failed to connect to gRPC server")?;
