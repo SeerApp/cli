@@ -488,6 +488,7 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
     f.render_widget(
         Paragraph::new(log_lines)
             .block(logs_block)
+            .wrap(ratatui::widgets::Wrap { trim: false })
             .scroll((app.log_offset as u16, 0)),
         chunks[1],
     );
