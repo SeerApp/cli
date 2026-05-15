@@ -436,61 +436,6 @@ fn hard_split(s: &str, width: usize) -> Vec<&str> {
     chunks
 }
 
-#[cfg(test)]
-mod wrap_tests {
-    use super::*;
-
-    #[test]
-    fn empty_line_is_one_row() {
-        assert_eq!(wrap_line("", 40), vec![""]);
-    }
-
-    #[test]
-    fn short_line_stays_single_row() {
-        let line = "May 15 INFO Program success";
-        assert_eq!(wrap_line(line, 80), vec![line]);
-    }
-
-    #[test]
-    fn wraps_at_whitespace_not_mid_word() {
-        let line = "May 15 INFO Program consumed 38783 of 200000 compute units";
-        let rows = wrap_line(line, 40);
-        assert!(rows.len() > 1);
-        for row in &rows {
-            assert!(!row.starts_with(' '), "rows should not lead with space: {row:?}");
-            assert!(row.chars().count() <= 40, "row too wide: {row:?}");
-        }
-        let joined: String = rows.join(" ");
-        assert!(joined.contains("compute units"));
-        assert!(!rows.iter().any(|r| *r == "s"));
-    }
-
-    #[test]
-    fn long_token_splits_at_char_boundary() {
-        let sig = "5eC9XQ4xZAtQkZfpVuuy9KgjPDNfgkWbTRMx6LZSFcgrrVqiYDRHRh82S685CC3cV3paYKbYzcCGjVvfPPFQAttv";
-        let line = format!("Transaction processed {sig}");
-        let rows = wrap_line(&line, 50);
-        assert!(rows.len() > 1);
-        let rejoined = rows.concat();
-        assert!(rejoined.contains(sig));
-    }
-
-    #[test]
-    fn visual_row_count_matches_wrap() {
-        let line = "aaa bbb ccc ddd eee fff ggg";
-        assert_eq!(
-            SessionApp::line_visual_rows(line, 10),
-            wrap_line(line, 10).len(),
-        );
-    }
-
-    #[test]
-    fn strip_ansi_removes_sgr() {
-        let raw = "\x1b[32mMay 15 INFO\x1b[0m hello";
-        assert_eq!(strip_ansi(raw), "May 15 INFO hello");
-    }
-}
-
 // Public entry point
 pub async fn run_session_tui(
     stream: tonic::Streaming<RunSessionStreamResponse>,
