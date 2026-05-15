@@ -72,6 +72,8 @@ struct SessionApp {
     tx_state: ListState,
     logs: Vec<String>,
     log_offset: usize,
+    log_follow: bool,
+    log_panel_height: usize,
     focus: Focus,
     url_copied: bool,
     stream_done: bool,
@@ -90,6 +92,8 @@ impl SessionApp {
             tx_state,
             logs: Vec::new(),
             log_offset: 0,
+            log_follow: true,
+            log_panel_height: 0,
             focus: Focus::Transactions,
             url_copied: false,
             stream_done: false,
@@ -114,9 +118,6 @@ impl SessionApp {
                 // Route the line into the transactions tree and always into raw logs.
                 self.ingest_log(line.clone());
                 self.logs.push(line);
-                if self.focus == Focus::Logs {
-                    self.log_offset = self.logs.len().saturating_sub(1);
-                }
             }
             StreamEvent::Done => {
                 self.stream_done = true;
@@ -210,11 +211,19 @@ impl SessionApp {
 
     // ── RPC Logs panel navigation ─────────────────────────────────────────
     fn log_next(&mut self) {
-        let max = self.logs.len().saturating_sub(1);
-        self.log_offset = (self.log_offset + 3).min(max);
+        let bottom = self.logs.len().saturating_sub(self.log_panel_height.max(1));
+        self.log_offset = (self.log_offset + 3).min(bottom);
+        if self.log_offset >= bottom {
+            self.log_follow = true;
+        }
     }
 
     fn log_prev(&mut self) {
+        // Anchor at the current rendered bottom before leaving follow mode.
+        if self.log_follow {
+            self.log_offset = self.logs.len().saturating_sub(self.log_panel_height.max(1));
+            self.log_follow = false;
+        }
         self.log_offset = self.log_offset.saturating_sub(3);
     }
 
@@ -356,8 +365,11 @@ fn run_loop(
             if let Event::Key(key) = event::read()? {
                 app.url_copied = false;
                 match key.code {
-                    KeyCode::Char('q') => return Ok(()),
+                    KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                     KeyCode::Char('c') => {
+                        if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                            return Ok(());
+                        }
                         if !app.rpc_url.is_empty() {
                             if let Ok(mut cb) = Clipboard::new() {
                                 let _ = cb.set_text(app.rpc_url.clone());
@@ -365,8 +377,15 @@ fn run_loop(
                             }
                         }
                     }
-                    KeyCode::Down | KeyCode::Char('j') => app.log_next(),
-                    KeyCode::Up | KeyCode::Char('k') => app.log_prev(),
+                    KeyCode::Down => app.log_next(),
+                    KeyCode::Up => app.log_prev(),
+                    KeyCode::Char('j') => {
+                        app.log_follow = true;
+                    }
+                    KeyCode::Char('k') => {
+                        app.log_follow = false;
+                        app.log_offset = 0;
+                    }
                     _ => {}
                 }
             }
@@ -485,29 +504,44 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
         .title(logs_title)
         .border_style(Style::default());
 
+    let visible_rows = chunks[1].height.saturating_sub(2) as usize;
+    app.log_panel_height = visible_rows;
+    let bottom = app.logs.len().saturating_sub(visible_rows);
+
+    // Re-enable follow whenever the view is already at (or past) the bottom.
+    if app.log_offset >= bottom {
+        app.log_follow = true;
+    }
+
+    let scroll_offset = if app.log_follow {
+        bottom
+    } else {
+        app.log_offset.min(bottom)
+    };
+    app.log_offset = scroll_offset;
+
     f.render_widget(
         Paragraph::new(log_lines)
             .block(logs_block)
-            .wrap(ratatui::widgets::Wrap { trim: false })
-            .scroll((app.log_offset as u16, 0)),
+            .scroll((scroll_offset as u16, 0)),
         chunks[1],
     );
 
     // ── Help bar ──────────────────────────────────────────────────────────────
     let mut help_spans = vec![
+        Span::styled(" Esc ", Style::default().fg(Color::Black).bg(Color::DarkGray).bold()),
+        Span::raw(" quit   "),
         Span::styled(" ↑↓ ", Style::default().fg(Color::Black).bg(Color::DarkGray).bold()),
-        Span::raw(" scroll logs   "),
+        Span::raw(" scroll   "),
+        Span::styled(" j/k ", Style::default().fg(Color::Black).bg(Color::DarkGray).bold()),
+        Span::raw(" bottom/top   "),
     ];
     if !app.rpc_url.is_empty() {
         help_spans.extend([
             Span::styled(" c ", Style::default().fg(Color::Black).bg(Color::DarkGray).bold()),
-            Span::raw(" copy rpc url   "),
+            Span::raw(" copy rpc url"),
         ]);
     }
-    help_spans.extend([
-        Span::styled(" q ", Style::default().fg(Color::Black).bg(Color::DarkGray).bold()),
-        Span::raw(" quit & stop session"),
-    ]);
 
     f.render_widget(Paragraph::new(Line::from(help_spans)), chunks[2]);
 }
