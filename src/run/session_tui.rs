@@ -74,6 +74,7 @@ struct SessionApp {
     log_offset: usize,
     log_follow: bool,
     log_panel_height: usize,
+    log_panel_width: usize,
     focus: Focus,
     url_copied: bool,
     stream_done: bool,
@@ -94,6 +95,7 @@ impl SessionApp {
             log_offset: 0,
             log_follow: true,
             log_panel_height: 0,
+            log_panel_width: 0,
             focus: Focus::Transactions,
             url_copied: false,
             stream_done: false,
@@ -209,9 +211,26 @@ impl SessionApp {
         self.tx_state.select(Some(i));
     }
 
+    // ── Visual-row helpers (accounts for word-wrap) ───────────────────────
+    fn line_visual_rows(line: &str, width: usize) -> usize {
+        let w = width.max(1);
+        let len = line.chars().count();
+        if len == 0 { 1 } else { (len + w - 1) / w }
+    }
+
+    fn total_visual_rows(&self) -> usize {
+        let w = self.log_panel_width.max(1);
+        self.logs.iter().map(|l| Self::line_visual_rows(l, w)).sum()
+    }
+
+    fn visual_bottom(&self) -> usize {
+        self.total_visual_rows()
+            .saturating_sub(self.log_panel_height.max(1))
+    }
+
     // ── RPC Logs panel navigation ─────────────────────────────────────────
     fn log_next(&mut self) {
-        let bottom = self.logs.len().saturating_sub(self.log_panel_height.max(1));
+        let bottom = self.visual_bottom();
         self.log_offset = (self.log_offset + 3).min(bottom);
         if self.log_offset >= bottom {
             self.log_follow = true;
@@ -221,7 +240,7 @@ impl SessionApp {
     fn log_prev(&mut self) {
         // Anchor at the current rendered bottom before leaving follow mode.
         if self.log_follow {
-            self.log_offset = self.logs.len().saturating_sub(self.log_panel_height.max(1));
+            self.log_offset = self.visual_bottom();
             self.log_follow = false;
         }
         self.log_offset = self.log_offset.saturating_sub(3);
@@ -504,9 +523,10 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
         .title(logs_title)
         .border_style(Style::default());
 
-    let visible_rows = chunks[1].height.saturating_sub(2) as usize;
-    app.log_panel_height = visible_rows;
-    let bottom = app.logs.len().saturating_sub(visible_rows);
+    // Update panel dimensions so nav helpers work in visual-row space.
+    app.log_panel_height = chunks[1].height.saturating_sub(2) as usize;
+    app.log_panel_width  = chunks[1].width.saturating_sub(2) as usize;
+    let bottom = app.visual_bottom();
 
     // Re-enable follow whenever the view is already at (or past) the bottom.
     if app.log_offset >= bottom {
@@ -523,6 +543,7 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
     f.render_widget(
         Paragraph::new(log_lines)
             .block(logs_block)
+            .wrap(ratatui::widgets::Wrap { trim: false })
             .scroll((scroll_offset as u16, 0)),
         chunks[1],
     );
