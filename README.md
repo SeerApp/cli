@@ -129,4 +129,4 @@ Specify your Seer session URL inside your test.
 
 ## Bug Reports
 
-Seer is in early beta, so occasional bugs are expected. To report a bug, open an issue on this repo, or [DM us on X](https://x.com/SeerForSolana).
+Seer is in early beta, so occasional bugs are expected. To report a bug, open an issue on this repo,[DM us on X](https://x.com/SeerForSolana) or [contact support](https://t.me/seer_support).
