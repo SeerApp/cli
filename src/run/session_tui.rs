@@ -117,7 +117,8 @@ impl SessionApp {
                 self.stream_done = true;
             }
             StreamEvent::Log(line) => {
-                // Route the line into the transactions tree and always into raw logs.
+                // Strip embedded ANSI so wrapped continuations match the first row.
+                let line = strip_ansi(&line);
                 self.ingest_log(line.clone());
                 self.logs.push(line);
             }
@@ -213,9 +214,7 @@ impl SessionApp {
 
     // ── Visual-row helpers (accounts for word-wrap) ───────────────────────
     fn line_visual_rows(line: &str, width: usize) -> usize {
-        let w = width.max(1);
-        let len = line.chars().count();
-        if len == 0 { 1 } else { (len + w - 1) / w }
+        wrap_line(line, width).len()
     }
 
     fn total_visual_rows(&self) -> usize {
@@ -300,23 +299,140 @@ fn extract_signature(line: &str) -> String {
     line.chars().take(40).collect()
 }
 
-/// Split `line` into chunks of exactly `width` characters each.
-/// An empty line produces a single empty string so blank rows are preserved.
-fn split_line_at(line: &str, width: usize) -> Vec<&str> {
+/// Remove CSI/OSC escape sequences so ratatui styling is consistent across wrapped rows.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                while let Some(&ch) = chars.peek() {
+                    chars.next();
+                    if ('@'..='~').contains(&ch) {
+                        break;
+                    }
+                }
+                continue;
+            }
+            if chars.peek() == Some(&']') {
+                chars.next();
+                while let Some(&ch) = chars.peek() {
+                    chars.next();
+                    if ch == '\x07' || (ch == '\x1b' && chars.peek() == Some(&'\\')) {
+                        if ch == '\x1b' {
+                            chars.next();
+                        }
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Word-wrap `line` to at most `width` display columns per row.
+/// Breaks on whitespace when possible; tokens longer than `width` are split at
+/// character boundaries (e.g. base58 signatures).
+fn wrap_line(line: &str, width: usize) -> Vec<&str> {
     if width == 0 || line.is_empty() {
         return vec![line];
+    }
+    let width = width.max(1);
+
+    let words = word_ranges(line);
+    if words.is_empty() {
+        return vec![line.trim_end()];
+    }
+
+    let mut rows = Vec::new();
+    let mut row_start = words[0].0;
+    let mut row_end = words[0].0;
+    let mut row_len = 0usize;
+
+    for &(ws, we) in &words {
+        let word = &line[ws..we];
+        let wlen = word.chars().count();
+
+        if wlen > width {
+            if row_len > 0 {
+                rows.push(&line[row_start..row_end]);
+                row_len = 0;
+            }
+            rows.extend(hard_split(word, width));
+            row_start = we;
+            row_end = we;
+            continue;
+        }
+
+        let gap = usize::from(row_len > 0);
+        if row_len + gap + wlen > width {
+            if row_len > 0 {
+                rows.push(&line[row_start..row_end]);
+            }
+            row_start = ws;
+            row_end = we;
+            row_len = wlen;
+        } else {
+            if row_len == 0 {
+                row_start = ws;
+            }
+            row_end = we;
+            row_len += gap + wlen;
+        }
+    }
+
+    if row_len > 0 {
+        rows.push(&line[row_start..row_end]);
+    }
+    rows
+}
+
+/// Byte ranges `(start, end)` of each whitespace-delimited token in `line`.
+fn word_ranges(line: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut in_word = false;
+    let mut start = 0usize;
+    for (i, c) in line.char_indices() {
+        if c.is_whitespace() {
+            if in_word {
+                ranges.push((start, i));
+                in_word = false;
+            }
+        } else if !in_word {
+            start = i;
+            in_word = true;
+        }
+    }
+    if in_word {
+        ranges.push((start, line.len()));
+    }
+    ranges
+}
+
+/// Hard-split a single token that exceeds `width` at character boundaries.
+fn hard_split(s: &str, width: usize) -> Vec<&str> {
+    if s.is_empty() {
+        return vec![s];
     }
     let mut chunks = Vec::new();
     let mut char_count = 0usize;
     let mut byte_start = 0usize;
-    for (byte_idx, _) in line.char_indices() {
-        if char_count > 0 && char_count % width == 0 {
-            chunks.push(&line[byte_start..byte_idx]);
-            byte_start = byte_idx;
-        }
+    for (byte_idx, ch) in s.char_indices() {
         char_count += 1;
+        if char_count == width {
+            let end = byte_idx + ch.len_utf8();
+            chunks.push(&s[byte_start..end]);
+            byte_start = end;
+            char_count = 0;
+        }
     }
-    chunks.push(&line[byte_start..]);
+    if byte_start < s.len() || chunks.is_empty() {
+        chunks.push(&s[byte_start..]);
+    }
     chunks
 }
 
@@ -543,13 +659,13 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
     app.log_panel_height = visible;
     app.log_panel_width  = inner_w;
 
-    // Pre-split every raw log entry into fixed-width visual lines.
-    // We then pass ONLY the visible slice to the widget — no .wrap(), no
-    // .scroll(). This makes the offset arithmetic exact and means ratatui
-    // never sees off-screen content, eliminating all garbling artefacts.
+    // Pre-wrap every raw log entry into visual lines (whitespace-aware).
+    // We pass ONLY the visible slice to the widget — no ratatui .wrap() or
+    // .scroll() — so offset arithmetic stays exact and off-screen rows never
+    // garble the terminal.
     let w = inner_w.max(1);
     let visual_lines: Vec<&str> = app.logs.iter()
-        .flat_map(|l| split_line_at(l, w))
+        .flat_map(|l| wrap_line(l, w))
         .collect();
     let total  = visual_lines.len();
     let bottom = total.saturating_sub(visible);
@@ -562,13 +678,14 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
 
     let start = scroll_offset.min(total);
     let end   = (start + visible).min(total);
+    let log_style = Style::new().fg(Color::Gray);
     let log_lines: Vec<Line> = visual_lines[start..end]
         .iter()
-        .map(|l| Line::from(Span::styled(*l, Style::default().fg(Color::DarkGray))))
+        .map(|l| Line::from(Span::styled(*l, log_style)))
         .collect();
 
     f.render_widget(
-        Paragraph::new(log_lines).block(logs_block),
+        Paragraph::new(log_lines).style(log_style).block(logs_block),
         chunks[1],
     );
 
