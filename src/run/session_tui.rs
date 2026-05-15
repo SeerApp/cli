@@ -228,30 +228,10 @@ impl SessionApp {
             .saturating_sub(self.log_panel_height.max(1))
     }
 
-    /// Convert a visual-row offset into (raw_line_index, partial_row_within_that_line).
-    /// Slicing logs at raw_line_index lets ratatui receive only a small partial-row
-    /// offset (bounded by visual rows of one line), preventing accumulated word-wrap
-    /// vs character-wrap discrepancies from corrupting the rendered output.
-    fn find_scroll_position(&self, visual_offset: usize) -> (usize, usize) {
-        if self.logs.is_empty() {
-            return (0, 0);
-        }
-        let w = self.log_panel_width.max(1);
-        let mut remaining = visual_offset;
-        for (i, line) in self.logs.iter().enumerate() {
-            let rows = Self::line_visual_rows(line, w);
-            if remaining < rows {
-                return (i, remaining);
-            }
-            remaining = remaining.saturating_sub(rows);
-        }
-        (self.logs.len() - 1, 0)
-    }
-
     // ── RPC Logs panel navigation ─────────────────────────────────────────
     fn log_next(&mut self) {
         let bottom = self.visual_bottom();
-        self.log_offset = (self.log_offset + 3).min(bottom);
+        self.log_offset = (self.log_offset + 1).min(bottom);
         if self.log_offset >= bottom {
             self.log_follow = true;
         }
@@ -263,7 +243,7 @@ impl SessionApp {
             self.log_offset = self.visual_bottom();
             self.log_follow = false;
         }
-        self.log_offset = self.log_offset.saturating_sub(3);
+        self.log_offset = self.log_offset.saturating_sub(1);
     }
 
     // ── Focus ─────────────────────────────────────────────────────────────
@@ -318,6 +298,26 @@ fn extract_signature(line: &str) -> String {
     }
     // Fallback: first 40 chars of the line
     line.chars().take(40).collect()
+}
+
+/// Split `line` into chunks of exactly `width` characters each.
+/// An empty line produces a single empty string so blank rows are preserved.
+fn split_line_at(line: &str, width: usize) -> Vec<&str> {
+    if width == 0 || line.is_empty() {
+        return vec![line];
+    }
+    let mut chunks = Vec::new();
+    let mut char_count = 0usize;
+    let mut byte_start = 0usize;
+    for (byte_idx, _) in line.char_indices() {
+        if char_count > 0 && char_count % width == 0 {
+            chunks.push(&line[byte_start..byte_idx]);
+            byte_start = byte_idx;
+        }
+        char_count += 1;
+    }
+    chunks.push(&line[byte_start..]);
+    chunks
 }
 
 // Public entry point
@@ -537,41 +537,38 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
         .title(logs_title)
         .border_style(Style::default());
 
-    // Update panel dimensions so nav helpers work in visual-row space.
-    app.log_panel_height = chunks[1].height.saturating_sub(2) as usize;
-    app.log_panel_width  = chunks[1].width.saturating_sub(2) as usize;
-    let bottom = app.visual_bottom();
+    // Capture panel dimensions for consistent offset arithmetic.
+    let inner_w = chunks[1].width.saturating_sub(2) as usize;
+    let visible  = chunks[1].height.saturating_sub(2) as usize;
+    app.log_panel_height = visible;
+    app.log_panel_width  = inner_w;
 
-    // Re-enable follow whenever the view is already at (or past) the bottom.
+    // Pre-split every raw log entry into fixed-width visual lines.
+    // We then pass ONLY the visible slice to the widget — no .wrap(), no
+    // .scroll(). This makes the offset arithmetic exact and means ratatui
+    // never sees off-screen content, eliminating all garbling artefacts.
+    let w = inner_w.max(1);
+    let visual_lines: Vec<&str> = app.logs.iter()
+        .flat_map(|l| split_line_at(l, w))
+        .collect();
+    let total  = visual_lines.len();
+    let bottom = total.saturating_sub(visible);
+
     if app.log_offset >= bottom {
         app.log_follow = true;
     }
-
-    let scroll_offset = if app.log_follow {
-        bottom
-    } else {
-        app.log_offset.min(bottom)
-    };
+    let scroll_offset = if app.log_follow { bottom } else { app.log_offset.min(bottom) };
     app.log_offset = scroll_offset;
 
-    // Slice logs to start at the correct raw line so ratatui only receives a
-    // small partial-row offset (≤ visual rows of one line).  Passing large
-    // scroll values lets word-wrap vs char-wrap discrepancies accumulate and
-    // corrupt the rendered output when scrolling rapidly.
-    let (start_line, partial_row) = app.find_scroll_position(scroll_offset);
-    let visible_lines: Vec<Line> = app
-        .logs
-        .get(start_line..)
-        .unwrap_or(&[])
+    let start = scroll_offset.min(total);
+    let end   = (start + visible).min(total);
+    let log_lines: Vec<Line> = visual_lines[start..end]
         .iter()
-        .map(|l| Line::from(Span::styled(l.clone(), Style::default().fg(Color::DarkGray))))
+        .map(|l| Line::from(Span::styled(*l, Style::default().fg(Color::DarkGray))))
         .collect();
 
     f.render_widget(
-        Paragraph::new(visible_lines)
-            .block(logs_block)
-            .wrap(ratatui::widgets::Wrap { trim: false })
-            .scroll((partial_row as u16, 0)),
+        Paragraph::new(log_lines).block(logs_block),
         chunks[1],
     );
 
