@@ -228,6 +228,26 @@ impl SessionApp {
             .saturating_sub(self.log_panel_height.max(1))
     }
 
+    /// Convert a visual-row offset into (raw_line_index, partial_row_within_that_line).
+    /// Slicing logs at raw_line_index lets ratatui receive only a small partial-row
+    /// offset (bounded by visual rows of one line), preventing accumulated word-wrap
+    /// vs character-wrap discrepancies from corrupting the rendered output.
+    fn find_scroll_position(&self, visual_offset: usize) -> (usize, usize) {
+        if self.logs.is_empty() {
+            return (0, 0);
+        }
+        let w = self.log_panel_width.max(1);
+        let mut remaining = visual_offset;
+        for (i, line) in self.logs.iter().enumerate() {
+            let rows = Self::line_visual_rows(line, w);
+            if remaining < rows {
+                return (i, remaining);
+            }
+            remaining = remaining.saturating_sub(rows);
+        }
+        (self.logs.len() - 1, 0)
+    }
+
     // ── RPC Logs panel navigation ─────────────────────────────────────────
     fn log_next(&mut self) {
         let bottom = self.visual_bottom();
@@ -506,12 +526,6 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
     f.render_widget(header, chunks[0]);
 
     // ── RPC Logs ──────────────────────────────────────────────────────────────
-    let log_lines: Vec<Line> = app
-        .logs
-        .iter()
-        .map(|l| Line::from(Span::styled(l.clone(), Style::default().fg(Color::DarkGray))))
-        .collect();
-
     let logs_title = if app.stream_done {
         " RPC Logs (session ended \u{2014} press q to exit) "
     } else {
@@ -540,11 +554,24 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
     };
     app.log_offset = scroll_offset;
 
+    // Slice logs to start at the correct raw line so ratatui only receives a
+    // small partial-row offset (≤ visual rows of one line).  Passing large
+    // scroll values lets word-wrap vs char-wrap discrepancies accumulate and
+    // corrupt the rendered output when scrolling rapidly.
+    let (start_line, partial_row) = app.find_scroll_position(scroll_offset);
+    let visible_lines: Vec<Line> = app
+        .logs
+        .get(start_line..)
+        .unwrap_or(&[])
+        .iter()
+        .map(|l| Line::from(Span::styled(l.clone(), Style::default().fg(Color::DarkGray))))
+        .collect();
+
     f.render_widget(
-        Paragraph::new(log_lines)
+        Paragraph::new(visible_lines)
             .block(logs_block)
             .wrap(ratatui::widgets::Wrap { trim: false })
-            .scroll((scroll_offset as u16, 0)),
+            .scroll((partial_row as u16, 0)),
         chunks[1],
     );
 
