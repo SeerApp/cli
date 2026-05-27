@@ -23,7 +23,7 @@ enum StreamEvent {
     Completed { error: String },
     Log(String),
     Done,
-    Error(String),
+    Error { code: tonic::Code, message: String },
 }
 
 // Transaction model (populated by parsing log lines)
@@ -54,6 +54,7 @@ enum AppStatus {
     Pending(String),
     Running,
     Completed { error: String },
+    Disconnected,
     StreamError(String),
 }
 
@@ -113,7 +114,12 @@ impl SessionApp {
                 self.status = AppStatus::Running;
             }
             StreamEvent::Completed { error } => {
-                self.status = AppStatus::Completed { error };
+                if error.contains("exited with code 137") {
+                    self.status = AppStatus::Completed { error: String::new() };
+                    self.expires_at = Some(0);
+                } else {
+                    self.status = AppStatus::Completed { error };
+                }
                 self.stream_done = true;
             }
             StreamEvent::Log(line) => {
@@ -125,8 +131,18 @@ impl SessionApp {
             StreamEvent::Done => {
                 self.stream_done = true;
             }
-            StreamEvent::Error(e) => {
-                self.status = AppStatus::StreamError(e);
+            StreamEvent::Error { code, message } => {
+                if !self.stream_done {
+                    let is_transport_close = matches!(
+                        code,
+                        tonic::Code::Unknown | tonic::Code::Unavailable
+                    );
+                    if is_transport_close && matches!(self.status, AppStatus::Running) {
+                        self.status = AppStatus::Disconnected;
+                    } else {
+                        self.status = AppStatus::StreamError(message);
+                    }
+                }
                 self.stream_done = true;
             }
         }
@@ -482,7 +498,10 @@ fn spawn_stream_reader(
                     break;
                 }
                 Err(e) => {
-                    let _ = tx.send(StreamEvent::Error(e.to_string()));
+                    let _ = tx.send(StreamEvent::Error {
+                        code: e.code(),
+                        message: e.to_string(),
+                    });
                     break;
                 }
             }
@@ -601,6 +620,10 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
                 )
             }
         }
+        AppStatus::Disconnected => (
+            "\u{25cc} Disconnected (session ended or network loss)".to_string(),
+            Style::default().fg(Color::Yellow),
+        ),
         AppStatus::StreamError(e) => (
             format!("\u{2718} Error: {}", e),
             Style::default().fg(Color::Red).bold(),
