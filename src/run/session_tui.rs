@@ -62,6 +62,7 @@ struct SessionApp {
     focus: Focus,
     url_copied: bool,
     stream_done: bool,
+    frozen_expiry_str: Option<String>,
 }
 
 impl SessionApp {
@@ -82,6 +83,7 @@ impl SessionApp {
             focus: Focus::Transactions,
             url_copied: false,
             stream_done: false,
+            frozen_expiry_str: None,
         }
     }
 
@@ -98,10 +100,10 @@ impl SessionApp {
             StreamEvent::Completed { error } => {
                 if error.contains("exited with code 137") {
                     self.status = AppStatus::Completed { error: String::new() };
-                    self.expires_at = Some(0);
                 } else {
                     self.status = AppStatus::Completed { error };
                 }
+                self.expires_at = Some(0);
                 self.stream_done = true;
             }
             StreamEvent::Log(line) => {
@@ -124,6 +126,7 @@ impl SessionApp {
                     } else {
                         self.status = AppStatus::StreamError(message);
                     }
+                    self.frozen_expiry_str = self.expires_at.map(format_expiry);
                 }
                 self.stream_done = true;
             }
@@ -498,7 +501,7 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
             }
         }
         AppStatus::Disconnected => (
-            "\u{25cc} Disconnected (session ended or network loss)".to_string(),
+            "\u{25cc} Disconnected (network issues)".to_string(),
             Style::default().fg(Color::Yellow),
         ),
         AppStatus::StreamError(e) => (
@@ -513,7 +516,9 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
         app.rpc_url.clone()
     };
 
-    let expiry_str = app.expires_at.map(format_expiry).unwrap_or_default();
+    let expiry_str = app.frozen_expiry_str.clone()
+        .or_else(|| app.expires_at.map(format_expiry))
+        .unwrap_or_default();
     let copy_indicator = if app.url_copied {
         Span::styled(" \u{2713} Copied!", Style::default().fg(Color::Green).bold())
     } else {
