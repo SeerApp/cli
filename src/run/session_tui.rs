@@ -27,25 +27,9 @@ enum StreamEvent {
 }
 
 // Transaction model (populated by parsing log lines)
-#[allow(unused)]
 struct Transaction {
-    /// The log line that triggered creation of this entry.
-    header: String,
-    /// Short timestamp extracted from the log line, e.g. "14:32:01".
-    timestamp: String,
-    /// Transaction signature extracted from the log line, or a short excerpt.
-    signature: String,
     /// Subsequent log lines that belong to this transaction.
     detail_lines: Vec<String>,
-    expanded: bool,
-}
-
-/// Flat cursor items for the Transactions list.
-#[derive(Clone, Copy)]
-#[allow(unused)]
-enum FlatItem {
-    TxHeader(usize),
-    TxDetail(usize, usize), // (tx_idx, detail_idx)
 }
 
 // Application status
@@ -61,7 +45,6 @@ enum AppStatus {
 #[derive(PartialEq)]
 enum Focus {
     Transactions,
-    Logs,
 }
 
 // Application state
@@ -81,7 +64,6 @@ struct SessionApp {
     stream_done: bool,
 }
 
-#[allow(unused)]
 impl SessionApp {
     fn new() -> Self {
         let mut tx_state = ListState::default();
@@ -163,14 +145,8 @@ impl SessionApp {
             || line.to_lowercase().contains("transaction signature");
 
         if is_tx_start || self.transactions.is_empty() {
-            let timestamp = extract_timestamp(&line);
-            let signature = extract_signature(&line);
             self.transactions.push(Transaction {
-                header: line,
-                timestamp,
-                signature,
                 detail_lines: Vec::new(),
-                expanded: false,
             });
             // Keep the selection on the newest entry while Transactions is focused.
             if self.focus == Focus::Transactions {
@@ -180,52 +156,6 @@ impl SessionApp {
         } else if let Some(tx) = self.transactions.last_mut() {
             tx.detail_lines.push(line);
         }
-    }
-
-    // ── Flat item helpers ─────────────────────────────────────────────────
-    fn flat_items(&self) -> Vec<FlatItem> {
-        let mut items = Vec::new();
-        for (ti, tx) in self.transactions.iter().enumerate() {
-            items.push(FlatItem::TxHeader(ti));
-            if tx.expanded {
-                for di in 0..tx.detail_lines.len() {
-                    items.push(FlatItem::TxDetail(ti, di));
-                }
-            }
-        }
-        items
-    }
-
-    fn toggle_expand(&mut self) {
-        let items = self.flat_items();
-        if let Some(sel) = self.tx_state.selected() {
-            match items.get(sel) {
-                Some(&FlatItem::TxHeader(ti)) => {
-                    self.transactions[ti].expanded = !self.transactions[ti].expanded;
-                    let new_len = self.flat_items().len();
-                    if sel >= new_len {
-                        self.tx_state.select(Some(new_len.saturating_sub(1)));
-                    }
-                }
-                Some(&FlatItem::TxDetail(_, _)) | None => {}
-            }
-        }
-    }
-
-    // ── Transactions panel navigation ─────────────────────────────────────
-    fn tx_next(&mut self) {
-        let len = self.flat_items().len();
-        if len == 0 { return; }
-        let i = self.tx_state.selected().map_or(0, |i| (i + 1) % len);
-        self.tx_state.select(Some(i));
-    }
-
-    fn tx_prev(&mut self) {
-        let len = self.flat_items().len();
-        if len == 0 { return; }
-        let i = self.tx_state.selected()
-            .map_or(0, |i| if i == 0 { len - 1 } else { i - 1 });
-        self.tx_state.select(Some(i));
     }
 
     // ── Visual-row helpers (accounts for word-wrap) ───────────────────────
@@ -261,60 +191,9 @@ impl SessionApp {
         self.log_offset = self.log_offset.saturating_sub(1);
     }
 
-    // ── Focus ─────────────────────────────────────────────────────────────
-    fn focus_transactions(&mut self) {
-        self.focus = Focus::Transactions;
-        if self.tx_state.selected().is_none() {
-            self.tx_state.select(Some(0));
-        }
-    }
-
-    fn focus_logs(&mut self) {
-        self.focus = Focus::Logs;
-    }
 }
 
 // Log-line parsers
-/// Extract a short timestamp like "14:32:01" from the beginning of a log line.
-fn extract_timestamp(line: &str) -> String {
-    // Matches patterns: "[14:32:01]", "14:32:01.123", "T14:32:01"
-    for token in line.split_whitespace().take(3) {
-        let stripped = token.trim_matches(|c| c == '[' || c == ']');
-        // "HH:MM:SS" or "HH:MM:SS.mmm"
-        let parts: Vec<&str> = stripped.splitn(3, ':').collect();
-        if parts.len() == 3
-            && parts[0].chars().rev().take(2).all(|c| c.is_ascii_digit())
-            && parts[1].len() == 2 && parts[1].chars().all(|c| c.is_ascii_digit())
-        {
-            let sec = parts[2].split('.').next().unwrap_or("");
-            if sec.len() == 2 && sec.chars().all(|c| c.is_ascii_digit()) {
-                return format!("{}:{}:{}", parts[0].chars().rev().take(2).collect::<String>().chars().rev().collect::<String>(), parts[1], sec);
-            }
-        }
-    }
-    String::new()
-}
-
-/// Extract a transaction signature (base58, 43–88 chars) from a log line.
-fn extract_signature(line: &str) -> String {
-    for token in line.split_whitespace() {
-        let t = token.trim_matches(|c| c == '(' || c == ')' || c == ',' || c == ':');
-        if t.len() >= 32
-            && t.chars().all(|c| {
-                matches!(c, '1'..='9' | 'A'..='H' | 'J'..='N' | 'P'..='Z' | 'a'..='k' | 'm'..='z')
-            })
-        {
-            // Truncate long signatures to keep the UI tidy
-            if t.len() > 16 {
-                return format!("{}...{}", &t[..6], &t[t.len() - 5..]);
-            }
-            return t.to_string();
-        }
-    }
-    // Fallback: first 40 chars of the line
-    line.chars().take(40).collect()
-}
-
 /// Remove CSI/OSC escape sequences so ratatui styling is consistent across wrapped rows.
 fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -593,8 +472,6 @@ fn render(f: &mut Frame, app: &mut SessionApp) {
         ])
         .split(f.area());
 
-    #[allow(unused)]
-    let focused_style = Style::default().fg(Color::Yellow);
 
     // ── Header ───────────────────────────────────────────────────────────────
     let (status_text, status_style) = match &app.status {
