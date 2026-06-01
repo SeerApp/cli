@@ -41,6 +41,9 @@ impl SessionsClient {
         }
 
         let channel = endpoint
+            .http2_keep_alive_interval(std::time::Duration::from_secs(30))
+            .keep_alive_timeout(std::time::Duration::from_secs(10))
+            .keep_alive_while_idle(true)
             .connect()
             .await
             .context("Failed to connect to gRPC server")?;
@@ -64,10 +67,11 @@ impl SessionsClient {
         self.inner.create_session(request).await
     }
 
-    pub async fn run_session(
+    pub async fn run_session_stream(
         &mut self,
-        request: Request<RunSessionRequest>,
-    ) -> Result<tonic::Response<RunSessionResponse>, tonic::Status> {
-        self.inner.run_session(request).await
+        request: Request<RunSessionStreamRequest>,
+    ) -> Result<tonic::Response<tonic::Streaming<RunSessionStreamResponse>>, tonic::Status> {
+        self.inner.run_session_stream(request).await
     }
 }
+

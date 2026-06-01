@@ -94,7 +94,7 @@ After the command executes successfully, you will see your Seer session URL, in 
 New Seer session at: https://rpc.seer.run/...
 ```
 
-The Seer session currently automatically ends after 15 minutes of inactivity.
+The Seer session currently automatically ends after 15 minutes, or when the CLI stream is closed.
 
 ---
 
@@ -122,11 +122,10 @@ Specify your Seer session URL inside your test.
 ## Requirements
 
 - Rust toolchain
-- Solana CLI 3.0.0 and higher (`cargo-build-sbf`)
 - A Seer API key (get one at [Seer](https://app.seer.run/))
 
-> ⚠️ Seer **will not** work with Solana CLI versions before 3.0.0.
+> ⚠️ Seer **will not** include program traces when compiling programs on Solana CLI versions before 3.0.0. This is due to a bug in the Solana toolchain on these versions. All other Seer features work as usual.
 
 ## Bug Reports
 
-Seer is in early beta, so occasional bugs are expected. To report a bug, open an issue on this repo, or [DM us on X](https://x.com/SeerForSolana).
+Seer is in early beta, so occasional bugs are expected. To report a bug, open an issue on this repo, [DM us on X](https://x.com/SeerForSolana) or [contact support](https://t.me/seer_support).

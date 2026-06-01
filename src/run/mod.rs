@@ -7,6 +7,7 @@ mod idl;
 mod source_paths;
 mod utils;
 mod upload;
+mod session_tui;
 
 
 use seer_protos_community_neoeinstein_prost::seer::sessions::v1::*;
@@ -290,11 +291,10 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     }
 
     println!("");
-    let run_resp = client
-        .run_session(Request::new(RunSessionRequest {}))
+    let stream = client
+        .run_session_stream(Request::new(RunSessionStreamRequest {}))
         .await
         .map_err(map_sessions_rpc_error)?
         .into_inner();
-    println!("New Seer session (15 minutes) live at: {}", run_resp.solana_validator_url);
-    Ok(())
+    session_tui::run_session_tui(stream).await
 }
