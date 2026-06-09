@@ -2826,7 +2826,7 @@ dependencies = [
 
 [[package]]
 name = "seer"
-version = "0.1.3"
+version = "1.0.0"
 dependencies = [
  "anchor-lang-idl-spec",
  "anyhow",
