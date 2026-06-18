@@ -76,13 +76,18 @@ pub struct RunArgs {
     /// Skip IDL discovery and deployment.
     #[arg(long, default_value_t = false)]
     pub no_idl: bool,
+
+    /// Start a session without building or deploying any programs.
+    /// Use this when you only need a live RPC endpoint without custom program deployments
+    #[arg(long, default_value_t = false)]
+    pub no_deploy: bool,
 }
 
 
 
 #[tokio::main]
 pub async fn run(args: RunArgs) -> anyhow::Result<()> {
-    if !args.skip_build {
+    if !args.skip_build && !args.no_deploy {
         let build_args = crate::build::BuildArgs {
             cleanup_seer: args.cleanup_seer,
             silent: args.silent,
@@ -99,6 +104,36 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
 
 
     let cwd = std::env::current_dir()?;
+
+    if args.no_deploy {
+        println!("Note: --no-deploy is set. No programs will be built or deployed, even if artifacts exist in the target directory.");
+        println!("Starting session without any program deployments...");
+
+        let operator_pubkey = get_operator_pubkey()?;
+        let mut client = SessionsClient::connect(&args.server_url, &token).await?;
+
+        let create_req = CreateSessionRequest {
+            session: Some(Session {
+                project_path: cwd.to_string_lossy().to_string(),
+                artifacts: vec![],
+                operator_pubkey: operator_pubkey.clone(),
+            }),
+        };
+
+        println!("");
+        client
+            .create_session(Request::new(create_req))
+            .await
+            .map_err(map_sessions_rpc_error)?;
+
+        println!("");
+        let stream = client
+            .run_session_stream(Request::new(RunSessionStreamRequest {}))
+            .await
+            .map_err(map_sessions_rpc_error)?
+            .into_inner();
+        return session_tui::run_session_tui(stream).await;
+    }
 
     println!("");
     let artifacts_dir = if args.artifacts == PathBuf::from("./target/deploy") {
